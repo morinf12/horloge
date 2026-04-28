@@ -17,7 +17,7 @@ static bool s_apMode = true;       // true while AP/captive-portal active
 // ---------------- Embedded UI -------------------------------------------------
 static const char INDEX_HTML[] PROGMEM = R"HTML(
 <!doctype html>
-<html lang="en">
+<html lang="fr">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -61,45 +61,45 @@ static const char INDEX_HTML[] PROGMEM = R"HTML(
 <main>
 
   <section class="card">
-    <h2>Time</h2>
+    <h2>Heure</h2>
     <div class="time" id="clock">
       <span class="d" id="d0" data-v="-">8</span><span class="d" id="d1" data-v="-">8</span><span class="colon">:</span><span class="d" id="d2" data-v="-">8</span><span class="d" id="d3" data-v="-">8</span><span class="colon">:</span><span class="d" id="d4" data-v="-">8</span><span class="d" id="d5" data-v="-">8</span>
     </div>
-    <button class="primary" onclick="syncTime()">Sync time from browser</button>
+    <button class="primary" onclick="syncTime()">Synchroniser depuis le navigateur</button>
   </section>
 
   <section class="card">
-    <h2>Display colors</h2>
+    <h2>Couleurs d'affichage</h2>
     <div class="row">
-      <label>Day from</label>
+      <label>Jour depuis</label>
       <input id="dayT" type="time" value="08:00">
     </div>
     <div class="row">
-      <label>Day color</label>
+      <label>Couleur jour</label>
       <input id="dayC" type="color" value="#ff0000">
     </div>
     <div class="row">
-      <label>Day backlight</label>
+      <label>Luminosit&#233; jour</label>
       <input id="dayBL" type="range" min="1" max="100" value="100"> <span id="dayBLv">100</span>%
     </div>
     <div class="row">
-      <label>Night from</label>
+      <label>Nuit depuis</label>
       <input id="nightT" type="time" value="22:00">
     </div>
     <div class="row">
-      <label>Night color</label>
+      <label>Couleur nuit</label>
       <input id="nightC" type="color" value="#0000ff">
     </div>
     <div class="row">
-      <label>Night backlight</label>
+      <label>Luminosit&#233; nuit</label>
       <input id="nightBL" type="range" min="1" max="100" value="20"> <span id="nightBLv">20</span>%
     </div>
-    <button class="primary" onclick="saveSchedule()">Save</button>
+    <button class="primary" onclick="saveSchedule()">Enregistrer</button>
   </section>
 
   <footer>
-    <a href="/wifi">Wi-Fi setup</a> &nbsp;|&nbsp;
-    <a href="/update">Firmware update (OTA)</a>
+    <a href="/wifi">Configuration Wi-Fi</a> &nbsp;|&nbsp;
+    <a href="/update">Mise &#224; jour firmware (OTA)</a>
   </footer>
 </main>
 
@@ -122,7 +122,7 @@ function syncTime() {
   const epoch = Math.floor(Date.now()/1000);
   const tz = -new Date().getTimezoneOffset();
   fetch('/api/time?epoch='+epoch+'&tz='+tz).then(()=>{
-    alert('Time synced!');
+    alert('Heure synchronis\u00e9e\u00a0!');
   });
 }
 function rgb565to24(v) {
@@ -151,7 +151,7 @@ function saveSchedule() {
   const dbl = document.getElementById('dayBL').value;
   const nbl = document.getElementById('nightBL').value;
   fetch('/api/schedule?day='+d+'&night='+n+'&dayc='+dc+'&nightc='+nc+'&daybl='+dbl+'&nightbl='+nbl).then(()=>{
-    alert('Saved!');
+    alert('Enregistr\u00e9\u00a0!');
   });
 }
 function loadSchedule() {
@@ -177,11 +177,11 @@ loadSchedule();
 // ---------------- Wi-Fi config page (captive portal) -------------------------
 static const char WIFI_HTML[] PROGMEM = R"HTML(
 <!doctype html>
-<html lang="en">
+<html lang="fr">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Wi-Fi Setup</title>
+<title>Configuration Wi-Fi</title>
 <style>
   :root { color-scheme: dark; }
   body { margin:0; font-family: system-ui, sans-serif; background:#0e1726; color:#e6edf3; }
@@ -210,34 +210,34 @@ static const char WIFI_HTML[] PROGMEM = R"HTML(
 </style>
 </head>
 <body>
-<header>Wi-Fi Setup</header>
+<header>Configuration Wi-Fi</header>
 <main>
 
   <section class="card">
-    <h2>Current</h2>
-    <div id="cur"><small>loading...</small></div>
+    <h2>Actuel</h2>
+    <div id="cur"><small>chargement...</small></div>
   </section>
 
   <section class="card">
-    <h2>Available networks</h2>
-    <button onclick="scan()">Rescan</button>
-    <ul id="list"><li><small>scanning...</small></li></ul>
+    <h2>R&#233;seaux disponibles</h2>
+    <button onclick="scan()">Actualiser</button>
+    <ul id="list"><li><small>recherche...</small></li></ul>
   </section>
 
   <section class="card">
-    <h2>Connect</h2>
+    <h2>Connexion</h2>
     <input id="ssid"  type="text"     placeholder="SSID" autocomplete="off">
-    <input id="pass"  type="password" placeholder="Password (leave blank for open)">
-    <button onclick="save()">Save &amp; connect</button>
+    <input id="pass"  type="password" placeholder="Mot de passe (vide si ouvert)">
+    <button onclick="save()">Enregistrer et connecter</button>
     <div id="msg"></div>
   </section>
 
   <section class="card">
-    <h2>Reset</h2>
-    <button class="secondary" onclick="reset()">Forget Wi-Fi &amp; reboot to AP</button>
+    <h2>R&#233;initialisation</h2>
+    <button class="secondary" onclick="reset()">Oublier le Wi-Fi et red&#233;marrer en AP</button>
   </section>
 
-  <p><a href="/">&laquo; back</a></p>
+  <p><a href="/">&laquo; retour</a></p>
 </main>
 
 <script>
@@ -245,28 +245,28 @@ async function refresh() {
   try {
     const r = await fetch('/api/wifi/status');
     const s = await r.json();
-    let html = `<div>Mode: <b>${s.mode}</b></div>`;
+    let html = `<div>Mode : <b>${s.mode}</b></div>`;
     if (s.mode === 'STA') {
-      html += `<div>SSID: <b>${s.ssid||''}</b></div>`;
-      html += `<div>IP: <b>${s.ip||''}</b></div>`;
-      html += `<div>RSSI: <b>${s.rssi} dBm</b></div>`;
+      html += `<div>SSID\u00a0: <b>${s.ssid||''}</b></div>`;
+      html += `<div>IP\u00a0: <b>${s.ip||''}</b></div>`;
+      html += `<div>RSSI\u00a0: <b>${s.rssi} dBm</b></div>`;
     } else {
-      html += `<div>AP SSID: <b>${s.ap_ssid}</b></div>`;
-      html += `<div>AP IP: <b>${s.ap_ip}</b></div>`;
-      if (s.saved_ssid) html += `<div>Saved STA SSID: <b>${s.saved_ssid}</b></div>`;
+      html += `<div>AP SSID\u00a0: <b>${s.ap_ssid}</b></div>`;
+      html += `<div>AP IP\u00a0: <b>${s.ap_ip}</b></div>`;
+      if (s.saved_ssid) html += `<div>SSID STA enregistr\u00e9\u00a0: <b>${s.saved_ssid}</b></div>`;
     }
     document.getElementById('cur').innerHTML = html;
   } catch(e) {}
 }
 
 async function scan() {
-  document.getElementById('list').innerHTML = '<li><small>scanning...</small></li>';
+  document.getElementById('list').innerHTML = '<li><small>recherche...</small></li>';
   try {
     const r = await fetch('/api/wifi/scan');
     const nets = await r.json();
     const ul = document.getElementById('list');
     ul.innerHTML = '';
-    if (!nets.length) { ul.innerHTML = '<li><small>no networks found</small></li>'; return; }
+    if (!nets.length) { ul.innerHTML = '<li><small>aucun r\u00e9seau trouv\u00e9</small></li>'; return; }
     nets.forEach(n => {
       const li = document.createElement('li');
       if (n.enc) li.classList.add('lock');
@@ -279,7 +279,7 @@ async function scan() {
       ul.appendChild(li);
     });
   } catch(e) {
-    document.getElementById('list').innerHTML = '<li><small class="err">scan failed</small></li>';
+    document.getElementById('list').innerHTML = '<li><small class="err">\u00e9chec du scan</small></li>';
   }
 }
 
@@ -287,19 +287,19 @@ async function save() {
   const ssid = document.getElementById('ssid').value.trim();
   const pass = document.getElementById('pass').value;
   const msg  = document.getElementById('msg');
-  if (!ssid) { msg.innerHTML = '<span class="err">SSID required</span>'; return; }
-  msg.innerHTML = '<small>saving + rebooting in STA mode...</small>';
+  if (!ssid) { msg.innerHTML = '<span class="err">SSID requis</span>'; return; }
+  msg.innerHTML = '<small>enregistrement et red\u00e9marrage en mode STA...</small>';
   const fd = new URLSearchParams();
   fd.append('ssid', ssid);
   fd.append('pass', pass);
   await fetch('/api/wifi/save', { method:'POST', body: fd });
-  msg.innerHTML = '<span class="ok">Saved. Device is rebooting. Reconnect to your home Wi-Fi to find it.</span>';
+  msg.innerHTML = '<span class="ok">Enregistr\u00e9. Red\u00e9marrage en cours. Reconnectez-vous \u00e0 votre Wi-Fi pour le retrouver.</span>';
 }
 
 async function reset() {
-  if (!confirm('Forget saved Wi-Fi and reboot back to AP mode?')) return;
+  if (!confirm('Oublier le Wi-Fi enregistr\u00e9 et red\u00e9marrer en mode AP\u00a0?')) return;
   await fetch('/api/wifi/reset', { method:'POST' });
-  document.getElementById('msg').innerHTML = '<span class="ok">Reset. Rebooting to AP...</span>';
+  document.getElementById('msg').innerHTML = '<span class="ok">R\u00e9initialis\u00e9. Red\u00e9marrage en AP...</span>';
 }
 
 refresh();
@@ -311,21 +311,22 @@ scan();
 
 // ---------------- OTA upload page --------------------------------------------
 static const char OTA_HTML[] PROGMEM = R"HTML(
-<!doctype html><meta charset="utf-8"><title>OTA Update</title>
+<!doctype html><meta charset="utf-8"><title>Mise &#224; jour OTA</title>
 <style>body{font-family:system-ui;background:#0e1726;color:#e6edf3;padding:24px}
 input,button{padding:10px;font-size:15px}
 button{background:#1f6feb;color:white;border:0;border-radius:6px;cursor:pointer}
 .bar{height:14px;background:#243049;border-radius:7px;overflow:hidden;margin-top:14px}
 .bar>div{height:100%;background:#7ee787;width:0%}</style>
-<h2>Firmware Update</h2>
-<p>Select a compiled <code>.bin</code> file and upload.</p>
+<h2>Mise &#224; jour firmware</h2>
+<p>S&#233;lectionnez un fichier <code>.bin</code> compil&#233; et envoyez-le.</p>
 <form id="f" enctype="multipart/form-data" method="POST" action="/update">
-  <input type="file" name="firmware" accept=".bin" required>
-  <button type="submit">Upload</button>
+  <label style="display:inline-block;padding:10px;background:#1f6feb;color:white;border-radius:6px;cursor:pointer;font-size:15px;margin-bottom:8px">Choisir un fichier<input type="file" name="firmware" accept=".bin" required style="display:none" onchange="document.getElementById('fn').textContent=this.files[0]?.name||'Aucun fichier'"></label>
+  <span id="fn" style="margin-left:8px;color:#9fb3d1">Aucun fichier</span><br>
+  <button type="submit">Envoyer</button>
 </form>
 <div class="bar"><div id="p"></div></div>
 <pre id="log"></pre>
-<p><a style="color:#7ee787" href="/">&laquo; back</a></p>
+<p><a style="color:#7ee787" href="/">&laquo; retour</a></p>
 <script>
 const f=document.getElementById('f'),p=document.getElementById('p'),l=document.getElementById('log');
 f.addEventListener('submit',e=>{
@@ -335,8 +336,8 @@ f.addEventListener('submit',e=>{
   x.upload.onprogress=ev=>{ if(ev.lengthComputable){
     p.style.width=(ev.loaded/ev.total*100).toFixed(1)+'%'; }};
   x.onload=()=>{ l.textContent=x.status+' '+x.responseText;
-    if(x.status===200){ l.textContent+='\nDevice rebooting...'; }};
-  x.onerror=()=>{ l.textContent='Upload error'; };
+    if(x.status===200){ l.textContent+='\nRed\u00e9marrage en cours...'; }};
+  x.onerror=()=>{ l.textContent='Erreur d\'envoi'; };
   x.open('POST','/update'); x.send(fd);
 });
 </script>
@@ -437,10 +438,13 @@ static String jsonEscape(const String& s) {
 }
 
 static void hWifiScan() {
-  int n = WiFi.scanNetworks(false, true);   // sync, include hidden
+  int n = WiFi.scanNetworks(false, false);  // sync, skip hidden
   String j = "[";
+  bool first = true;
   for (int i = 0; i < n; ++i) {
-    if (i) j += ",";
+    if (WiFi.SSID(i).isEmpty()) continue;   // skip hidden networks
+    if (!first) j += ",";
+    first = false;
     j += "{\"ssid\":\"" + jsonEscape(WiFi.SSID(i)) + "\",";
     j += "\"rssi\":"    + String(WiFi.RSSI(i)) + ",";
     j += "\"ch\":"      + String(WiFi.channel(i)) + ",";
