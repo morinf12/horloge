@@ -1,0 +1,262 @@
+#include "display.h"
+#include "config.h"
+#include <SPI.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_ST7789.h>
+#include <time.h>
+
+// Backlight PWM
+#define BL_PWM_CHANNEL  0
+#define BL_PWM_FREQ     5000
+#define BL_PWM_RES      8      // 0-255
+
+static uint8_t s_dayBl   = DEFAULT_DAY_BL;
+static uint8_t s_nightBl = DEFAULT_NIGHT_BL;
+static uint8_t s_curBl   = DEFAULT_DAY_BL;
+
+// Vertical shift applied to all drawing (panel offset compensation)
+#define Y_OFFSET       20
+
+static SPIClass s_spi(FSPI);   // ESP32-S2 has FSPI/HSPI; FSPI is the user SPI bus
+static Adafruit_ST7789 tft(&s_spi, TFT_CS_PIN, TFT_DC_PIN, TFT_RST_PIN);
+
+void display_begin() {
+  // Setup backlight as PWM
+  ledcSetup(BL_PWM_CHANNEL, BL_PWM_FREQ, BL_PWM_RES);
+  ledcAttachPin(TFT_BL_PIN, BL_PWM_CHANNEL);
+  ledcWrite(BL_PWM_CHANNEL, 255);   // full brightness for boot
+
+  s_spi.begin(TFT_SCLK_PIN, -1, TFT_MOSI_PIN, TFT_CS_PIN);
+
+  tft.init(TFT_WIDTH, TFT_HEIGHT);   // 240x280
+  tft.setRotation(2);                // portrait for boot screen
+  tft.fillScreen(ST77XX_BLACK);
+}
+
+void display_showBoot() {
+  tft.fillScreen(ST77XX_BLACK);
+  tft.setTextWrap(false);
+  tft.setTextColor(ST77XX_CYAN);
+  tft.setTextSize(3);
+  tft.setCursor(20, 80  + Y_OFFSET);
+  tft.println(F("Horloge"));
+  tft.setTextSize(2);
+  tft.setTextColor(ST77XX_WHITE);
+  tft.setCursor(20, 140 + Y_OFFSET);
+  tft.print(F("ESP32-S2"));
+}
+
+// ---- 7-segment clock (landscape 280x240, TTF font) -------------------------
+#include "SevenSeg128.h"
+
+// Rotation 3 → 280 wide × 240 tall
+static const int LAND_W = 280;
+static const int LAND_H = 240;
+
+// Day / night color pairs
+static uint16_t s_dayFg    = DEFAULT_DAY_FG;
+static uint16_t s_dayDim   = DEFAULT_DAY_DIM;
+static uint16_t s_nightFg  = DEFAULT_NIGHT_FG;
+static uint16_t s_nightDim = DEFAULT_NIGHT_DIM;
+static uint16_t s_dayMin   = DEFAULT_DAY_MIN;
+static uint16_t s_nightMin = DEFAULT_NIGHT_MIN;
+
+static uint16_t s_curFg  = DEFAULT_DAY_FG;
+static uint16_t s_curDim = DEFAULT_DAY_DIM;
+
+static char    s_lastClockStr[6] = "";   // "HH:MM" + NUL
+static bool    s_lastColonOn     = true;
+static bool    s_clockInited     = false;
+
+// Off-screen buffer for flicker-free clock updates
+static GFXcanvas16* s_clockCanvas = nullptr;
+static int16_t      s_canvasX = 0;    // screen position of canvas
+static int16_t      s_canvasY = 0;
+
+void display_setSchedule(uint16_t dayMin, uint16_t nightMin) {
+  s_dayMin  = dayMin;
+  s_nightMin = nightMin;
+}
+
+// Derive a dim version of an RGB565 color (roughly ÷4 per channel)
+static uint16_t dimColor(uint16_t c) {
+  uint16_t r = (c >> 11) & 0x1F;
+  uint16_t g = (c >> 5)  & 0x3F;
+  uint16_t b =  c        & 0x1F;
+  return ((r >> 2) << 11) | ((g >> 2) << 5) | (b >> 2);
+}
+
+void display_setColors(uint16_t dayFg, uint16_t nightFg) {
+  s_dayFg    = dayFg;
+  s_dayDim   = dimColor(dayFg);
+  s_nightFg  = nightFg;
+  s_nightDim = dimColor(nightFg);
+}
+
+void display_setBacklight(uint8_t dayPct, uint8_t nightPct) {
+  if (dayPct > 100) dayPct = 100;
+  if (nightPct > 100) nightPct = 100;
+  s_dayBl  = dayPct;
+  s_nightBl = nightPct;
+}
+
+static void applyBacklight(uint8_t pct) {
+  if (pct != s_curBl) {
+    s_curBl = pct;
+    ledcWrite(BL_PWM_CHANNEL, (uint32_t)pct * 255 / 100);
+  }
+}
+
+static bool isNightTime(int hour, int minute) {
+  uint16_t now = (uint16_t)(hour * 60 + minute);
+  if (s_nightMin > s_dayMin) {
+    // e.g. day=8:00, night=22:00 → night is [22:00..8:00)
+    return (now >= s_nightMin || now < s_dayMin);
+  } else {
+    // e.g. day=22:00, night=8:00 → night is [8:00..22:00)
+    return (now >= s_nightMin && now < s_dayMin);
+  }
+}
+
+// Helper: get xAdvance for a character from the GFXfont glyph table
+static int16_t fontCharAdvance(const GFXfont* f, char c) {
+  uint8_t idx = (uint8_t)c - pgm_read_byte(&f->first);
+  return (int16_t)pgm_read_byte(&((GFXglyph*)pgm_read_ptr(&f->glyph))[idx].xAdvance);
+}
+
+void display_showClock() {
+  struct tm ti;
+  time_t now = time(nullptr);
+  localtime_r(&now, &ti);
+
+  bool validTime = (ti.tm_year >= 124);
+  bool colonOn   = (ti.tm_sec % 2 == 0);
+
+  // Format time into 4 separate digit slots + colon flag
+  // d[0]=tens-of-hours (0 for blank), d[1]=units-of-hours, d[2]=tens-of-min, d[3]=units-of-min
+  char d[4];
+  char timeStr[6];   // for change detection
+  if (validTime) {
+    d[0] = (ti.tm_hour >= 10) ? ('0' + ti.tm_hour / 10) : ' ';
+    d[1] = '0' + ti.tm_hour % 10;
+    d[2] = '0' + ti.tm_min / 10;
+    d[3] = '0' + ti.tm_min % 10;
+    snprintf(timeStr, sizeof(timeStr), "%c%c%c%c", d[0], d[1], d[2], d[3]);
+  } else {
+    d[0] = ' '; d[1] = '-'; d[2] = '-'; d[3] = '-';
+    strcpy(timeStr, " ---");
+  }
+
+  // Pick day/night colors and backlight based on current time
+  uint16_t fg, dim;
+  bool night = validTime && isNightTime(ti.tm_hour, ti.tm_min);
+  if (night) {
+    fg  = s_nightFg;
+    dim = s_nightDim;
+    applyBacklight(s_nightBl);
+  } else {
+    fg  = s_dayFg;
+    dim = s_dayDim;
+    applyBacklight(s_dayBl);
+  }
+  bool colorChanged = (fg != s_curFg);
+  if (colorChanged) { s_curFg = fg; s_curDim = dim; }
+
+  bool digitsChanged = (strcmp(timeStr, s_lastClockStr) != 0);
+  bool colonChanged  = (colonOn != s_lastColonOn);
+
+  // First-time init: switch to landscape, compute layout, allocate canvas
+  if (!s_clockInited) {
+    tft.setRotation(3);           // landscape 280x240
+    tft.fillScreen(ST77XX_BLACK);
+    tft.setFont(&SevenSeg128);
+    tft.setTextSize(1);
+
+    int16_t digitCellW = fontCharAdvance(&SevenSeg128, '8');
+    int16_t colonCellW = fontCharAdvance(&SevenSeg128, ':');
+    int16_t totalW = 4 * digitCellW + colonCellW;
+
+    int16_t bx, by;
+    uint16_t bw, bh;
+    tft.getTextBounds("8", 0, 0, &bx, &by, &bw, &bh);
+
+    // Canvas covers the text bounding box with some padding
+    int16_t cvW = totalW;
+    int16_t cvH = (int16_t)bh + 4;   // +4 for safety margin
+
+    s_canvasX = (LAND_W - totalW) / 2;
+    s_canvasY = (LAND_H - (int16_t)bh) / 2 + by - 2 + 44;  // by is negative, +44 to lower
+
+    if (s_clockCanvas) delete s_clockCanvas;
+    s_clockCanvas = new GFXcanvas16(cvW, cvH);
+
+    tft.fillScreen(ST77XX_BLACK);
+    s_clockInited = true;
+    s_lastClockStr[0] = '\0';
+    s_lastColonOn = !colonOn;
+    digitsChanged = true;    // force full draw
+    colonChanged  = true;
+  }
+
+  if (!digitsChanged && !colonChanged && !colorChanged) return;
+  if (!s_clockCanvas) return;
+
+  GFXcanvas16& cv = *s_clockCanvas;
+  cv.fillScreen(ST77XX_BLACK);
+  cv.setFont(&SevenSeg128);
+  cv.setTextSize(1);
+
+  // Layout within canvas (origin at 0,0)
+  int16_t digitCellW = fontCharAdvance(&SevenSeg128, '8');
+  int16_t colonCellW = fontCharAdvance(&SevenSeg128, ':');
+
+  int16_t bx, by;
+  uint16_t bw, bh;
+  cv.getTextBounds("8", 0, 0, &bx, &by, &bw, &bh);
+  int16_t textY = -by + 2;   // baseline Y within canvas
+
+  int16_t cellX[5] = {
+    0,
+    digitCellW,
+    (int16_t)(2 * digitCellW),
+    (int16_t)(2 * digitCellW + colonCellW),
+    (int16_t)(3 * digitCellW + colonCellW),
+  };
+
+  // Draw dim "8" background for digit cells (skip first cell if blank)
+  cv.setTextColor(s_curDim);
+  for (int i = 0; i < 4; i++) {
+    if (d[i] == ' ') continue;   // no background for blank leading digit
+    int ci = (i < 2) ? i : i + 1;
+    cv.setCursor(cellX[ci], textY);
+    cv.print("8");
+  }
+
+  // Draw dim colon background
+  cv.setCursor(cellX[2], textY);
+  cv.print(":");
+
+  // Overdraw bright digits, right-aligned in their cells
+  cv.setTextColor(s_curFg);
+  for (int i = 0; i < 4; i++) {
+    if (d[i] == ' ') continue;   // skip blank leading digit
+    int ci = (i < 2) ? i : i + 1;
+    int16_t charAdv = fontCharAdvance(&SevenSeg128, d[i]);
+    int16_t xOff = digitCellW - charAdv;
+    char s[2] = { d[i], '\0' };
+    cv.setCursor(cellX[ci] + xOff, textY);
+    cv.print(s);
+  }
+
+  // Overdraw bright colon if on
+  if (colonOn) {
+    cv.setCursor(cellX[2], textY);
+    cv.print(":");
+  }
+
+  // Push canvas to display in one shot
+  tft.drawRGBBitmap(s_canvasX, s_canvasY, cv.getBuffer(), cv.width(), cv.height());
+
+  strcpy(s_lastClockStr, timeStr);
+  s_lastColonOn = colonOn;
+}
