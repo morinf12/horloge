@@ -67,6 +67,7 @@ static uint16_t s_curDim = DEFAULT_DAY_DIM;
 static char    s_lastClockStr[6] = "";   // "HH:MM" + NUL
 static bool    s_lastColonOn     = true;
 static bool    s_clockInited     = false;
+static int8_t  s_lastNight       = -1;   // -1=unknown, 0=day, 1=night
 
 // Off-screen buffer for flicker-free clock updates
 static GFXcanvas16* s_clockCanvas = nullptr;
@@ -194,6 +195,7 @@ void display_showClock() {
     s_clockInited = true;
     s_lastClockStr[0] = '\0';
     s_lastColonOn = !colonOn;
+    s_lastNight = -1;        // force icon draw
     digitsChanged = true;    // force full draw
     colonChanged  = true;
   }
@@ -256,6 +258,42 @@ void display_showClock() {
 
   // Push canvas to display in one shot
   tft.drawRGBBitmap(s_canvasX, s_canvasY, cv.getBuffer(), cv.width(), cv.height());
+
+  // Draw sun (day) or moon (night) icon when state changes
+  int8_t nightState = night ? 1 : 0;
+  if (nightState != s_lastNight) {
+    // Icon geometry — 90px diameter
+    const int16_t iconR   = 45;   // main circle radius
+    const int16_t iconY   = LAND_H - 50;
+    const int16_t sunX    = 55;
+    const int16_t moonX   = LAND_W - 55;
+    const int16_t clearW  = 100;
+    const int16_t clearH  = 100;
+
+    // Clear both icon areas
+    tft.fillRect(sunX  - clearW/2, iconY - clearH/2, clearW, clearH, ST77XX_BLACK);
+    tft.fillRect(moonX - clearW/2, iconY - clearH/2, clearW, clearH, ST77XX_BLACK);
+
+    if (!night) {
+      // Draw sun: yellow circle + 8 rays
+      const uint16_t sunCol = 0xFFE0; // yellow
+      tft.fillCircle(sunX, iconY, iconR - 8, sunCol);
+      for (int a = 0; a < 8; a++) {
+        float rad = a * 0.7854f; // PI/4
+        int16_t x1 = sunX + (int16_t)((iconR - 6) * cosf(rad));
+        int16_t y1 = iconY + (int16_t)((iconR - 6) * sinf(rad));
+        int16_t x2 = sunX + (int16_t)((iconR + 2) * cosf(rad));
+        int16_t y2 = iconY + (int16_t)((iconR + 2) * sinf(rad));
+        tft.drawLine(x1, y1, x2, y2, sunCol);
+      }
+    } else {
+      // Draw crescent moon: white circle minus black circle offset
+      const uint16_t moonCol = 0xC61F; // light blue-white
+      tft.fillCircle(moonX, iconY, iconR, moonCol);
+      tft.fillCircle(moonX + 20, iconY - 16, iconR, ST77XX_BLACK);
+    }
+    s_lastNight = nightState;
+  }
 
   strcpy(s_lastClockStr, timeStr);
   s_lastColonOn = colonOn;
