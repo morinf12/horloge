@@ -467,6 +467,19 @@ static void getItemValue(uint8_t idx, bool editing, char* buf) {
 
 // ---- Drawing ----------------------------------------------------------------
 void menu_draw() {
+  // WiFi sub-menu: check if live values changed and mark dirty only then
+  if (s_active && s_level == 1 && s_mainCur == MAIN_WIFI && !s_editing) {
+    static wl_status_t s_prevWlStatus = WL_IDLE_STATUS;
+    static wifi_mode_t s_prevWlMode   = WIFI_OFF;
+    wl_status_t curSt = WiFi.status();
+    wifi_mode_t curMd = WiFi.getMode();
+    if (curSt != s_prevWlStatus || curMd != s_prevWlMode) {
+      s_prevWlStatus = curSt;
+      s_prevWlMode   = curMd;
+      s_dirty = true;
+    }
+  }
+
   if (!s_active || !s_dirty) return;
 
   Adafruit_ST7789& tft = display_getTft();
@@ -519,31 +532,157 @@ void menu_draw() {
     // Separator line
     tft.drawFastHLine(MENU_X, MENU_Y + 22, SCR_W - 2*MENU_X, 0x3186);
 
-    int16_t y = MENU_Y + 32;
+    int16_t yStart = MENU_Y + 28;
     uint8_t count = subCount();
     const char** labels = subLabels();
     char valBuf[32];
 
-    for (uint8_t i = 0; i < count; i++) {
+    // Compact: label(size1) + value(size2) = 32px per row
+    const int16_t rowH = 32;
+    const int16_t editExtraH = 12;  // for RGB hint
+
+    // Compute available height
+    const int16_t availH = (SCR_H - 16) - yStart;
+    uint8_t maxVisible = availH / rowH;
+    if (maxVisible > count) maxVisible = count;
+
+    // Scroll offset to keep selected item visible
+    static uint8_t scrollOff = 0;
+    if (s_subCur < scrollOff) scrollOff = s_subCur;
+    if (s_subCur >= scrollOff + maxVisible) scrollOff = s_subCur - maxVisible + 1;
+    if (scrollOff + maxVisible > count) scrollOff = count - maxVisible;
+
+    // Draw scroll indicators
+    if (scrollOff > 0) {
+      tft.setTextSize(1);
+      tft.setTextColor(0x7BEF);
+      tft.setCursor(SCR_W - 16, MENU_Y + 24);
+      tft.print(F("\x18"));
+    }
+    if (scrollOff + maxVisible < count) {
+      tft.setTextSize(1);
+      tft.setTextColor(0x7BEF);
+      tft.setCursor(SCR_W - 16, SCR_H - 22);
+      tft.print(F("\x19"));
+    }
+
+    int16_t y = yStart;
+    for (uint8_t vi = 0; vi < maxVisible; vi++) {
+      uint8_t i = scrollOff + vi;
       bool sel = (i == s_subCur);
       bool itemEdit = sel && s_editing;
 
+      int16_t thisRowH = rowH;
+      bool isColor = false;
+      uint16_t swCol = 0;
+      if (s_mainCur == MAIN_JOUR && i == SJ_COULEUR)  { isColor = true; swCol = s_dayFg; }
+      if (s_mainCur == MAIN_NUIT && i == SN_COULEUR)  { isColor = true; swCol = s_nightFg; }
+      if (itemEdit && isColor) thisRowH += editExtraH;
+
+      // Selection highlight
       if (sel) {
-        tft.fillRect(MENU_X - 2, y - 2, SCR_W - 2*MENU_X + 4, ROW_H + 14, 0x1082);
+        tft.fillRect(MENU_X - 2, y - 1, SCR_W - 2*MENU_X + 4, thisRowH, 0x1082);
       }
 
-      // Label
+      // Label (small, top)
       tft.setTextSize(1);
       tft.setTextColor(sel ? ST77XX_WHITE : 0x9CF3);
-      tft.setCursor(MENU_X + 4, y + 2);
+      tft.setCursor(MENU_X + 4, y + 1);
       tft.print(labels[i]);
 
-      // Value
+      // Value (size 2, below label)
       getItemValue(i, itemEdit, valBuf);
       tft.setTextSize(2);
-      tft.setTextColor(itemEdit ? ST77XX_GREEN : ST77XX_WHITE);
-      tft.setCursor(MENU_X + 4, y + 16);
+      tft.setTextColor(itemEdit ? ST77XX_GREEN : ST77XX_YELLOW);
+      tft.setCursor(MENU_X + 4, y + 12);
       tft.print(valBuf);
+
+      // Color swatch (right side)
+      if (isColor) {
+        tft.fillRect(SCR_W - 30, y + 8, 18, 18, swCol);
+        tft.drawRect(SCR_W - 30, y + 8, 18, 18, ST77XX_WHITE);
+      }
+
+      // RGB sub-field hint
+      if (itemEdit && isColor) {
+        tft.setTextSize(1);
+        tft.setTextColor(0x7BEF);
+        tft.setCursor(MENU_X + 4, y + rowH);
+        tft.print(F("  R    G    B"));
+      }
+
+      y += thisRowH;
+    }
+  }
+
+  s_dirty = false;
+}
+
+// ---- JSON state for debug web page ------------------------------------------
+static void jsonEscape(String& out, const char* s) {
+  while (*s) {
+    if (*s == '"') out += "\\\"";
+    else if (*s == '\\') out += "\\\\";
+    else out += *s;
+    s++;
+  }
+}
+
+void menu_getStateJson(String& out) {
+  out = "{\"active\":";
+  out += s_active ? "true" : "false";
+
+  if (!s_active) { out += "}"; return; }
+
+  out += ",\"level\":";
+  out += s_level;
+  out += ",\"editing\":";
+  out += s_editing ? "true" : "false";
+
+  // Title
+  out += ",\"title\":\"";
+  if (s_level == 0) out += "MENU";
+  else { jsonEscape(out, subTitle()); }
+  out += "\"";
+
+  // Hint
+  out += ",\"hint\":\"";
+  if (s_level == 0)
+    out += "UP/DN:naviguer  A/R:entrer  B:quitter";
+  else if (s_editing)
+    out += "UP/DN:valeur  L/R:champ  B/A:ok";
+  else
+    out += "UP/DN:naviguer  A/R:editer  B/L:retour";
+  out += "\"";
+
+  // Items
+  out += ",\"items\":[";
+  if (s_level == 0) {
+    for (uint8_t i = 0; i < MAIN_COUNT; i++) {
+      if (i) out += ",";
+      out += "{\"label\":\"";
+      jsonEscape(out, s_mainLabels[i]);
+      out += "\",\"value\":\"\",\"sel\":";
+      out += (i == s_mainCur) ? "true" : "false";
+      out += ",\"edit\":false}";
+    }
+  } else {
+    uint8_t count = subCount();
+    const char** labels = subLabels();
+    char valBuf[32];
+    for (uint8_t i = 0; i < count; i++) {
+      bool sel = (i == s_subCur);
+      bool itemEdit = sel && s_editing;
+      getItemValue(i, itemEdit, valBuf);
+      if (i) out += ",";
+      out += "{\"label\":\"";
+      jsonEscape(out, labels[i]);
+      out += "\",\"value\":\"";
+      jsonEscape(out, valBuf);
+      out += "\",\"sel\":";
+      out += sel ? "true" : "false";
+      out += ",\"edit\":";
+      out += itemEdit ? "true" : "false";
 
       // Color swatch
       bool isColor = false;
@@ -551,21 +690,16 @@ void menu_draw() {
       if (s_mainCur == MAIN_JOUR && i == SJ_COULEUR)  { isColor = true; swCol = s_dayFg; }
       if (s_mainCur == MAIN_NUIT && i == SN_COULEUR)  { isColor = true; swCol = s_nightFg; }
       if (isColor) {
-        tft.fillRect(SCR_W - 34, y + 4, 22, 26, swCol);
-        tft.drawRect(SCR_W - 34, y + 4, 22, 26, ST77XX_WHITE);
+        uint8_t r, g, b;
+        rgb565_to_rgb(swCol, r, g, b);
+        char hex[8];
+        sprintf(hex, "#%02X%02X%02X", r, g, b);
+        out += ",\"color\":\"";
+        out += hex;
+        out += "\"";
       }
-
-      // RGB sub-field hint
-      if (itemEdit && isColor) {
-        tft.setTextSize(1);
-        tft.setTextColor(0x7BEF);
-        tft.setCursor(MENU_X + 4, y + 36);
-        tft.print(F("  R    G    B"));
-      }
-
-      y += ROW_H + 18;
+      out += "}";
     }
   }
-
-  s_dirty = false;
+  out += "]}";
 }

@@ -1,6 +1,7 @@
 #include "webui.h"
 #include "config.h"
 #include "display.h"
+#include "menu.h"
 #include "font_data.h"
 #include <WiFi.h>
 #include <WebServer.h>
@@ -58,7 +59,7 @@ static const char INDEX_HTML[] PROGMEM = R"HTML(
 </style>
 </head>
 <body>
-<header>Horloge</header>
+<header>Horloge <a href="/debug" style="float:right;color:white;font-size:14px;opacity:0.7;text-decoration:none">Debug</a></header>
 <main>
 
   <section class="card">
@@ -348,6 +349,181 @@ async function saveHostname() {
 </html>
 )HTML";
 
+// ---------------- Debug page -------------------------------------------------
+static const char DEBUG_HTML[] PROGMEM = R"HTML(
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Horloge - Debug</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, -apple-system, sans-serif;
+         background: #0e1726; color: #e6edf3; }
+  header { background: #1f6feb; padding: 14px 18px; font-size: 20px; font-weight: 600; }
+  header a { color: white; text-decoration: none; margin-left: 16px; font-size: 14px; opacity: 0.8; }
+  main { max-width: 520px; margin: 0 auto; padding: 16px; }
+  .card { background: #161f33; border: 1px solid #243049; border-radius: 10px;
+          padding: 16px; margin-bottom: 14px; }
+  h2 { margin: 0 0 12px; font-size: 16px; color: #9fb3d1; text-transform: uppercase; letter-spacing: 1px; }
+
+  /* TFT screen simulation */
+  .tft { background: #000; border: 3px solid #333; border-radius: 6px;
+         width: 100%; aspect-ratio: 280/240; position: relative;
+         font-family: monospace; overflow: hidden; padding: 8px; }
+  .tft .title { color: #00ffff; font-size: 16px; font-weight: bold; margin-bottom: 6px; }
+  .tft .item { padding: 3px 6px; margin: 1px 0; border-radius: 3px; font-size: 13px; }
+  .tft .item.sel { background: #1a1a3a; }
+  .tft .item .lbl { color: #aaa; font-size: 10px; display: block; }
+  .tft .item.sel .lbl { color: #fff; }
+  .tft .item .val { font-size: 14px; color: #ffcc00; font-weight: bold;
+                    font-family: monospace; display: flex; align-items: center; }
+  .tft .item.edit .val { color: #0f0; }
+  .tft .item .arrow { color: #fff; margin-left: 8px; }
+  .tft .swatch { display: inline-block; width: 14px; height: 14px; border: 1px solid #fff;
+                 vertical-align: middle; margin-left: 6px; flex-shrink: 0; }
+  .tft .hint { position: absolute; bottom: 6px; left: 8px; right: 8px;
+               color: #888; font-size: 10px; }
+  .tft .inactive { color: #555; font-size: 18px; text-align: center;
+                   position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); }
+
+  /* Button pad */
+  .pad { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr 1fr 1fr;
+         grid-template-rows: auto auto auto; gap: 8px; }
+  .btn { padding: 14px 0; border-radius: 10px; border: 2px solid #2c3a5a;
+         background: #1a2540; color: #e6edf3; font-size: 16px; font-weight: 700;
+         cursor: pointer; text-align: center; user-select: none;
+         transition: background 0.1s; }
+  .btn:active, .btn.pressed { background: #1f6feb; border-color: #1f6feb; }
+  .btn-up    { grid-column: 2; grid-row: 1; }
+  .btn-down  { grid-column: 2; grid-row: 3; }
+  .btn-left  { grid-column: 1; grid-row: 2; }
+  .btn-right { grid-column: 3; grid-row: 2; }
+  .btn-a     { grid-column: 5; grid-row: 1; background: #0d3b1e; border-color: #1a6b35; }
+  .btn-b     { grid-column: 6; grid-row: 1; background: #3b0d0d; border-color: #6b1a1a; }
+  .btn-a:active { background: #1a6b35; }
+  .btn-b:active { background: #6b1a1a; }
+  .label-dpad { grid-column: 1 / 4; grid-row: 2; display: flex; align-items: center;
+                justify-content: center; pointer-events: none; }
+  .status { font-size: 12px; color: #666; text-align: center; margin-top: 8px; }
+</style>
+</head>
+<body>
+<header>Horloge - Debug <a href="/">Accueil</a> <a href="/wifi">WiFi</a> <a href="/update">OTA</a></header>
+<main>
+
+<section class="card">
+  <h2>Ecran TFT (280x240)</h2>
+  <div class="tft" id="tft"></div>
+</section>
+
+<section class="card">
+  <h2>Boutons</h2>
+  <div class="pad" id="pad">
+    <div class="btn btn-up"    data-btn="up">&#9650; UP</div>
+    <div class="btn btn-left"  data-btn="left">&#9664; L</div>
+    <div class="btn btn-right" data-btn="right">R &#9654;</div>
+    <div class="btn btn-down"  data-btn="down">&#9660; DN</div>
+    <div class="btn btn-a"     data-btn="a">A</div>
+    <div class="btn btn-b"     data-btn="b">B</div>
+  </div>
+  <div class="status" id="status">Pret</div>
+</section>
+
+</main>
+<script>
+let polling = null;
+
+function renderTft(st) {
+  const el = document.getElementById('tft');
+  if (!st.active) {
+    el.innerHTML = '<div class="inactive">Menu inactif<br><small>Appuyez sur A pour ouvrir</small></div>';
+    return;
+  }
+  let html = '<div class="title">' + esc(st.title) + '</div>';
+  if (st.level === 1) html += '<hr style="border-color:#333;margin:3px 0">';
+  for (const it of st.items) {
+    let cls = 'item';
+    if (it.sel) cls += ' sel';
+    if (it.edit) cls += ' edit';
+    html += '<div class="' + cls + '">';
+    if (it.value !== undefined && it.value !== '') {
+      html += '<span class="lbl">' + esc(it.label) + '</span>';
+      html += '<span class="val">' + esc(it.value);
+      if (it.color) html += '<span class="swatch" style="background:' + it.color + '"></span>';
+      html += '</span>';
+    } else {
+      html += '<span class="val" style="font-size:13px">' + esc(it.label);
+      if (it.sel) html += ' <span class="arrow">&gt;</span>';
+      html += '</span>';
+    }
+    html += '</div>';
+  }
+  html += '<div class="hint">' + esc(st.hint || '') + '</div>';
+  el.innerHTML = html;
+}
+
+function esc(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+async function refresh() {
+  try {
+    const r = await fetch('/api/debug/state');
+    const st = await r.json();
+    renderTft(st);
+  } catch(e) {}
+}
+
+let lastPress = 0;
+const COOLDOWN = 300;
+
+async function press(btn) {
+  const now = Date.now();
+  if (now - lastPress < COOLDOWN) return;
+  lastPress = now;
+  document.getElementById('status').textContent = 'Envoi: ' + btn.toUpperCase();
+  try {
+    const fd = new URLSearchParams();
+    fd.append('btn', btn);
+    await fetch('/api/debug/press', { method: 'POST', body: fd });
+    setTimeout(refresh, 50);
+  } catch(e) {
+    document.getElementById('status').textContent = 'Erreur';
+  }
+}
+
+// Button pad events (prevent touch+mouse double fire)
+const pad = document.getElementById('pad');
+pad.addEventListener('touchstart', function(e) {
+  const b = e.target.closest('[data-btn]');
+  if (b) { e.preventDefault(); press(b.dataset.btn); }
+}, {passive:false});
+pad.addEventListener('mousedown', function(e) {
+  const b = e.target.closest('[data-btn]');
+  if (b) press(b.dataset.btn);
+});
+
+// Keyboard shortcuts
+document.addEventListener('keydown', function(e) {
+  const map = { ArrowUp:'up', ArrowDown:'down', ArrowLeft:'left', ArrowRight:'right',
+                a:'a', A:'a', Enter:'a', b:'b', B:'b', Escape:'b', Backspace:'b' };
+  const btn = map[e.key];
+  if (btn) { e.preventDefault(); press(btn); }
+});
+
+// Auto-refresh
+refresh();
+polling = setInterval(refresh, 500);
+</script>
+</body>
+</html>
+)HTML";
+
 // ---------------- OTA upload page --------------------------------------------
 static const char OTA_HTML[] PROGMEM = R"HTML(
 <!doctype html><meta charset="utf-8"><title>Mise &#224; jour OTA</title>
@@ -529,6 +705,34 @@ static void hWifiHostname() {
   }
 }
 
+// ---------------- Debug handlers ---------------------------------------------
+static void hDebugPage() {
+  s_server.send_P(200, "text/html", DEBUG_HTML);
+}
+
+static void hDebugState() {
+  String json;
+  menu_getStateJson(json);
+  s_server.send(200, "application/json", json);
+}
+
+static void hDebugPress() {
+  if (!s_server.hasArg("btn")) { s_server.send(400, "text/plain", "missing btn"); return; }
+  String b = s_server.arg("btn");
+  Button btn = BTN_NONE;
+  if      (b == "up")    btn = BTN_UP;
+  else if (b == "down")  btn = BTN_DOWN;
+  else if (b == "left")  btn = BTN_LEFT;
+  else if (b == "right") btn = BTN_RIGHT;
+  else if (b == "a")     btn = BTN_A;
+  else if (b == "b")     btn = BTN_B;
+  if (btn != BTN_NONE) {
+    menu_handleButton(btn);
+    if (menu_isActive()) menu_draw();
+  }
+  s_server.send(200, "application/json", "{\"ok\":true}");
+}
+
 // Captive-portal: redirect every unknown URL to the root so phones/laptops
 // auto-pop the Wi-Fi setup page.
 static void hCaptive() {
@@ -638,6 +842,10 @@ void webui_begin() {
   s_server.on("/api/wifi/reset",  HTTP_POST, hWifiReset);
   s_server.on("/api/wifi/hostname", HTTP_GET,  hWifiHostname);
   s_server.on("/api/wifi/hostname", HTTP_POST, hWifiHostname);
+
+  s_server.on("/debug",             HTTP_GET,  hDebugPage);
+  s_server.on("/api/debug/state",   HTTP_GET,  hDebugState);
+  s_server.on("/api/debug/press",   HTTP_POST, hDebugPress);
 
   // Captive-portal probe URLs (Apple, Microsoft, Android, etc.)
   s_server.on("/generate_204",      HTTP_GET, hCaptive);

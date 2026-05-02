@@ -11,8 +11,15 @@ static const Button s_btns[] = {
 };
 static const uint8_t NUM_BTNS = sizeof(s_pins) / sizeof(s_pins[0]);
 
-static uint32_t s_lastPress = 0;
-static const uint32_t DEBOUNCE_MS = 200;
+static const uint32_t DEBOUNCE_MS     = 50;
+static const uint32_t REPEAT_DELAY_MS = 1000;  // 1s before repeat starts
+static const uint32_t REPEAT_RATE_MS  = 150;   // repeat interval once started
+
+static int8_t   s_heldIdx     = -1;     // index of currently held button (-1 = none)
+static uint32_t s_pressTime   = 0;      // when button was first pressed
+static bool     s_fired       = false;  // initial press already reported
+static bool     s_repeating   = false;  // in repeat mode
+static uint32_t s_lastRepeat  = 0;      // last repeat fire time
 
 void buttons_begin() {
   for (uint8_t i = 0; i < NUM_BTNS; i++) {
@@ -22,12 +29,43 @@ void buttons_begin() {
 
 Button buttons_poll() {
   uint32_t now = millis();
-  if (now - s_lastPress < DEBOUNCE_MS) return BTN_NONE;
 
+  // Check if held button is still pressed
+  if (s_heldIdx >= 0) {
+    if (digitalRead(s_pins[s_heldIdx]) == LOW) {
+      // Still held — check repeat
+      if (!s_repeating) {
+        if (now - s_pressTime >= REPEAT_DELAY_MS) {
+          s_repeating = true;
+          s_lastRepeat = now;
+          return s_btns[s_heldIdx];
+        }
+      } else {
+        if (now - s_lastRepeat >= REPEAT_RATE_MS) {
+          s_lastRepeat = now;
+          return s_btns[s_heldIdx];
+        }
+      }
+      return BTN_NONE;
+    } else {
+      // Released
+      s_heldIdx = -1;
+      s_repeating = false;
+    }
+  }
+
+  // Scan for new press
   for (uint8_t i = 0; i < NUM_BTNS; i++) {
     if (digitalRead(s_pins[i]) == LOW) {
-      s_lastPress = now;
-      return s_btns[i];
+      // Debounce: wait a bit and re-check
+      delay(DEBOUNCE_MS);
+      if (digitalRead(s_pins[i]) == LOW) {
+        s_heldIdx    = i;
+        s_pressTime  = now;
+        s_fired      = true;
+        s_repeating  = false;
+        return s_btns[i];
+      }
     }
   }
   return BTN_NONE;
