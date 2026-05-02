@@ -4,6 +4,7 @@
 #include "menu.h"
 #include "font_data.h"
 #include <WiFi.h>
+#include <ESPmDNS.h>
 #include <WebServer.h>
 #include <DNSServer.h>
 #include <Preferences.h>
@@ -99,6 +100,19 @@ static const char INDEX_HTML[] PROGMEM = R"HTML(
     <button class="primary" onclick="saveSchedule()">Enregistrer</button>
   </section>
 
+  <section class="card">
+    <h2>Affichage</h2>
+    <div class="row">
+      <label>Ic&#244;nes soleil/lune</label>
+      <input id="icons" type="checkbox">
+    </div>
+    <div class="row">
+      <label>Arc-en-ciel</label>
+      <input id="rainbow" type="checkbox">
+    </div>
+    <button class="primary" onclick="saveDisplay()">Enregistrer</button>
+  </section>
+
   <footer>
     <a href="/wifi">Configuration Wi-Fi</a> &nbsp;|&nbsp;
     <a href="/update">Mise &#224; jour firmware (OTA)</a>
@@ -191,6 +205,22 @@ function loadSchedule() {
 document.getElementById('dayBL').oninput = function(){ document.getElementById('dayBLv').textContent=this.value; };
 document.getElementById('nightBL').oninput = function(){ document.getElementById('nightBLv').textContent=this.value; };
 loadSchedule();
+
+// Display options
+function loadDisplay() {
+  fetch('/api/display').then(r=>r.json()).then(d=>{
+    document.getElementById('icons').checked = d.icons;
+    document.getElementById('rainbow').checked = d.rainbow;
+  }).catch(()=>{});
+}
+function saveDisplay() {
+  const icons = document.getElementById('icons').checked ? 1 : 0;
+  const rainbow = document.getElementById('rainbow').checked ? 1 : 0;
+  fetch('/api/display?icons='+icons+'&rainbow='+rainbow).then(()=>{
+    alert('Enregistr\u00e9\u00a0!');
+  });
+}
+loadDisplay();
 </script>
 </body>
 </html>
@@ -619,6 +649,24 @@ static void hSchedule() {
   s_server.send(200, "application/json", j);
 }
 
+static void hDisplay() {
+  if (s_server.hasArg("icons")) {
+    bool v = s_server.arg("icons").toInt() != 0;
+    s_prefs.putBool("icons", v);
+    display_setShowIcons(v);
+  }
+  if (s_server.hasArg("rainbow")) {
+    bool v = s_server.arg("rainbow").toInt() != 0;
+    s_prefs.putBool("rainbow", v);
+    display_setRainbow(v);
+  }
+  bool icons = s_prefs.getBool("icons", true);
+  bool rainbow = s_prefs.getBool("rainbow", false);
+  String j = "{\"icons\":" + String(icons ? "true" : "false")
+           + ",\"rainbow\":" + String(rainbow ? "true" : "false") + "}";
+  s_server.send(200, "application/json", j);
+}
+
 // ---------------- Wi-Fi config / captive portal ------------------------------
 static void hWifiPage() { s_server.send_P(200, "text/html", WIFI_HTML); }
 
@@ -812,6 +860,9 @@ void webui_begin() {
   if (!sta)          startAccessPoint();
   else               s_apMode = false;
 
+  // Start mDNS responder (hostname.local)
+  MDNS.begin(hostname.c_str());
+
   // Configure timezone + NTP
   int tz = s_prefs.getInt("tz_off", 0);   // saved tz offset in minutes
   configTime(tz * 60L, 0, "pool.ntp.org", "time.nist.gov");
@@ -836,6 +887,7 @@ void webui_begin() {
   s_server.on("/font.ttf",    HTTP_GET,  hFont);
   s_server.on("/api/time",    HTTP_GET,  hTime);
   s_server.on("/api/schedule",HTTP_GET,  hSchedule);
+  s_server.on("/api/display", HTTP_GET,  hDisplay);
 
   s_server.on("/wifi",            HTTP_GET,  hWifiPage);
   s_server.on("/api/wifi/status", HTTP_GET,  hWifiStatus);

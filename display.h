@@ -2,7 +2,7 @@
 #include <Arduino.h>
 
 void display_begin();
-void display_showBoot();
+void display_showBoot(const char* hostname);
 void display_showIP(const char* ip);
 void display_showClock();
 void display_resetClock();

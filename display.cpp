@@ -33,7 +33,7 @@ void display_begin() {
   tft.fillScreen(ST77XX_BLACK);
 }
 
-void display_showBoot() {
+void display_showBoot(const char* hostname) {
   tft.fillScreen(ST77XX_BLACK);
   tft.setTextWrap(false);
   tft.setTextColor(ST77XX_CYAN);
@@ -43,7 +43,7 @@ void display_showBoot() {
   tft.setTextSize(2);
   tft.setTextColor(ST77XX_WHITE);
   tft.setCursor(50, 120);
-  tft.print(F("ESP32-S2"));
+  tft.print(hostname);
 }
 
 void display_showIP(const char* ip) {

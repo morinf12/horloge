@@ -11,6 +11,7 @@
 #include "buttons.h"
 #include "menu.h"
 #include <WiFi.h>
+#include <Preferences.h>
 
 void setup() {
   Serial.begin(115200);
@@ -18,7 +19,14 @@ void setup() {
   Serial.println(F("\n[Horloge] boot"));
 
   display_begin();
-  display_showBoot();
+
+  // Load hostname for splash screen
+  Preferences prefs;
+  prefs.begin("wifi", true);
+  String hostname = prefs.getString("hostname", "horloge");
+  prefs.end();
+  display_showBoot(hostname.c_str());
+
   buttons_begin();
   menu_begin();
 
