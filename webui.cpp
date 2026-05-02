@@ -41,11 +41,12 @@ static const char INDEX_HTML[] PROGMEM = R"HTML(
   button.primary { background:#1f6feb; border-color:#1f6feb; color:white; }
   .time { text-align:center; padding:12px 0; display:flex; justify-content:center; align-items:baseline; gap:0; }
   .time .d { font-family:'7seg',monospace; font-size:64px; display:inline-block;
-             width:0.75em; text-align:right; position:relative; color:transparent; }
+             width:0.75em; text-align:right; position:relative; color:transparent;
+             --fg:#7ee787; --dim:rgba(126,231,135,0.15); }
   .time .d::before { content:'8'; position:absolute; top:0; right:0;
-             color:#7ee787; opacity:0.15; pointer-events:none; }
+             color:var(--dim); pointer-events:none; }
   .time .d::after { content:attr(data-v); position:absolute; top:0; right:0;
-             color:#7ee787; }
+             color:var(--fg); }
   .time .colon { font-family:'7seg',monospace; font-size:64px; color:#7ee787; width:0.35em;
              text-align:center; display:inline-block; }
   .row { display:flex; align-items:center; gap:10px; margin:8px 0; }
@@ -114,6 +115,23 @@ function updateClock() {
   document.getElementById('d3').dataset.v = String(m % 10);
   document.getElementById('d4').dataset.v = String(Math.floor(s/10));
   document.getElementById('d5').dataset.v = String(s % 10);
+  updateClockColor();
+}
+var _dayMin=480, _nightMin=1320, _dayCol='#ff0000', _nightCol='#0000ff';
+function isNight() {
+  const now = new Date();
+  const cur = now.getHours()*60 + now.getMinutes();
+  if (_nightMin > _dayMin) return (cur >= _nightMin || cur < _dayMin);
+  else return (cur >= _nightMin && cur < _dayMin);
+}
+function updateClockColor() {
+  const col = isNight() ? _nightCol : _dayCol;
+  const dimCol = col + '26';
+  document.querySelectorAll('.time .d').forEach(el => {
+    el.style.setProperty('--fg', col);
+    el.style.setProperty('--dim', dimCol);
+  });
+  document.querySelectorAll('.time .colon').forEach(el => { el.style.color = col; });
 }
 updateClock();
 setInterval(updateClock, 1000);
@@ -164,6 +182,9 @@ function loadSchedule() {
     document.getElementById('dayBLv').textContent = s.daybl;
     document.getElementById('nightBL').value = s.nightbl;
     document.getElementById('nightBLv').textContent = s.nightbl;
+    _dayMin = s.day; _nightMin = s.night;
+    _dayCol = rgb565to24(s.dayc); _nightCol = rgb565to24(s.nightc);
+    updateClockColor();
   }).catch(()=>{});
 }
 document.getElementById('dayBL').oninput = function(){ document.getElementById('dayBLv').textContent=this.value; };

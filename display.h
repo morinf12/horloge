@@ -3,6 +3,7 @@
 
 void display_begin();
 void display_showBoot();
+void display_showIP(const char* ip);
 void display_showClock();
 void display_setSchedule(uint16_t dayMin, uint16_t nightMin);
 void display_setColors(uint16_t dayFg, uint16_t nightFg);

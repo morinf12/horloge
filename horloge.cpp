@@ -8,6 +8,8 @@
 #include "config.h"
 #include "display.h"
 #include "webui.h"
+#include "buttons.h"
+#include <WiFi.h>
 
 void setup() {
   Serial.begin(115200);
@@ -16,12 +18,25 @@ void setup() {
 
   display_begin();
   display_showBoot();
+  buttons_begin();
 
   webui_begin();
+
+  // Show IP address on boot screen
+  IPAddress ip = (WiFi.getMode() == WIFI_AP) ? WiFi.softAPIP() : WiFi.localIP();
+  display_showIP(ip.toString().c_str());
+
+  delay(5000);
 }
 
 void loop() {
   webui_loop();
+
+  Button btn = buttons_poll();
+  if (btn != BTN_NONE) {
+    Serial.printf("[BTN] %d\n", btn);
+    // TODO: handle menu navigation
+  }
 
   static uint32_t lastRefresh = 0;
   uint32_t now = millis();

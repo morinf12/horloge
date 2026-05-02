@@ -29,7 +29,7 @@ void display_begin() {
   s_spi.begin(TFT_SCLK_PIN, -1, TFT_MOSI_PIN, TFT_CS_PIN);
 
   tft.init(TFT_WIDTH, TFT_HEIGHT);   // 240x280
-  tft.setRotation(2);                // portrait for boot screen
+  tft.setRotation(3);                // landscape 280x240
   tft.fillScreen(ST77XX_BLACK);
 }
 
@@ -38,12 +38,20 @@ void display_showBoot() {
   tft.setTextWrap(false);
   tft.setTextColor(ST77XX_CYAN);
   tft.setTextSize(3);
-  tft.setCursor(20, 80  + Y_OFFSET);
+  tft.setCursor(50, 60);
   tft.println(F("Horloge"));
   tft.setTextSize(2);
   tft.setTextColor(ST77XX_WHITE);
-  tft.setCursor(20, 140 + Y_OFFSET);
+  tft.setCursor(50, 120);
   tft.print(F("ESP32-S2"));
+}
+
+void display_showIP(const char* ip) {
+  tft.setTextWrap(false);
+  tft.setTextColor(ST77XX_GREEN);
+  tft.setTextSize(2);
+  tft.setCursor(50, 170);
+  tft.print(ip);
 }
 
 // ---- 7-segment clock (landscape 280x240, TTF font) -------------------------
@@ -166,9 +174,8 @@ void display_showClock() {
   bool digitsChanged = (strcmp(timeStr, s_lastClockStr) != 0);
   bool colonChanged  = (colonOn != s_lastColonOn);
 
-  // First-time init: switch to landscape, compute layout, allocate canvas
+  // First-time init: compute layout, allocate canvas
   if (!s_clockInited) {
-    tft.setRotation(3);           // landscape 280x240
     tft.fillScreen(ST77XX_BLACK);
     tft.setFont(&SevenSeg128);
     tft.setTextSize(1);

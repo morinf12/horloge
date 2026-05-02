@@ -27,3 +27,11 @@
 #define WIFI_AP_SSID   "Horloge"
 #define WIFI_AP_PASS   "horloge1234"   // must be >=8 chars
 #define WIFI_AP_CHAN    6
+
+// ---------------- Navigation buttons (active LOW, internal pull-up) -----------
+#define BTN_UP_PIN      1
+#define BTN_DOWN_PIN    2
+#define BTN_LEFT_PIN    4
+#define BTN_RIGHT_PIN   6
+#define BTN_A_PIN       8
+#define BTN_B_PIN      10
