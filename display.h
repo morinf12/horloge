@@ -19,6 +19,8 @@ uint8_t  display_getDayBl();
 uint8_t  display_getNightBl();
 bool     display_getShowIcons();
 void     display_setShowIcons(bool show);
+bool     display_getRainbow();
+void     display_setRainbow(bool on);
 
 // Direct TFT access for menu drawing
 #include <Adafruit_ST7789.h>

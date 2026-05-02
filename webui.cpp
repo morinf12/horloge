@@ -828,6 +828,8 @@ void webui_begin() {
   display_setBacklight(dayBl, nightBl);
   bool icons = s_prefs.getBool("icons", true);
   display_setShowIcons(icons);
+  bool rainbow = s_prefs.getBool("rainbow", false);
+  display_setRainbow(rainbow);
 
   // Routes
   s_server.on("/",            HTTP_GET,  hRoot);

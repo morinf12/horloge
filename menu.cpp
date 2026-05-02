@@ -51,9 +51,10 @@ static const char* s_nuitLabels[] = { "Heure", "Couleur", "Luminosite" };
 // Sub-menu: Affichage
 enum SubAffichage : uint8_t {
   SA_ICONES = 0,
+  SA_RAINBOW,
   SA_COUNT
 };
-static const char* s_affLabels[] = { "Icones sol/lune" };
+static const char* s_affLabels[] = { "Icones sol/lune", "Arc-en-ciel" };
 
 // Sub-menu: WiFi
 enum SubWifi : uint8_t {
@@ -81,6 +82,7 @@ static uint16_t s_dayMin, s_nightMin;
 static uint16_t s_dayFg,  s_nightFg;
 static uint8_t  s_dayBl,  s_nightBl;
 static bool     s_showIcons;
+static bool     s_rainbow;
 
 // ---- Color helpers ----------------------------------------------------------
 static void rgb565_to_rgb(uint16_t c, uint8_t& r, uint8_t& g, uint8_t& b) {
@@ -104,12 +106,14 @@ static void saveAll() {
   prefs.putUChar("day_bl",   s_dayBl);
   prefs.putUChar("night_bl", s_nightBl);
   prefs.putBool("icons",     s_showIcons);
+  prefs.putBool("rainbow",   s_rainbow);
   prefs.end();
 
   display_setSchedule(s_dayMin, s_nightMin);
   display_setColors(s_dayFg, s_nightFg);
   display_setBacklight(s_dayBl, s_nightBl);
   display_setShowIcons(s_showIcons);
+  display_setRainbow(s_rainbow);
 }
 
 // ---- Sub-menu item count helper ---------------------------------------------
@@ -158,6 +162,7 @@ static void openMenu() {
   s_dayBl     = display_getDayBl();
   s_nightBl   = display_getNightBl();
   s_showIcons = display_getShowIcons();
+  s_rainbow   = display_getRainbow();
 }
 
 static void closeMenu() {
@@ -248,6 +253,9 @@ static void adjustValue(int8_t dir) {
     if (s_subCur == SA_ICONES) {
       s_showIcons = !s_showIcons;
       display_setShowIcons(s_showIcons);
+    } else if (s_subCur == SA_RAINBOW) {
+      s_rainbow = !s_rainbow;
+      display_setRainbow(s_rainbow);
     }
   } else if (s_mainCur == MAIN_WIFI) {
     if (s_subCur == SW_ACTIVER) {
@@ -415,6 +423,9 @@ static void getItemValue(uint8_t idx, bool editing, char* buf) {
   } else if (s_mainCur == MAIN_AFFICHAGE) {
     if (idx == SA_ICONES) {
       strcpy(buf, s_showIcons ? "OUI" : "NON");
+      return;
+    } else if (idx == SA_RAINBOW) {
+      strcpy(buf, s_rainbow ? "OUI" : "NON");
       return;
     }
   } else if (s_mainCur == MAIN_WIFI) {

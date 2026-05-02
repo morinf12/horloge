@@ -77,6 +77,8 @@ static bool    s_lastColonOn     = true;
 static bool    s_clockInited     = false;
 static int8_t  s_lastNight       = -1;   // -1=unknown, 0=day, 1=night
 static bool    s_showIcons       = true;  // show sun/moon icons
+static bool    s_rainbow         = false; // rainbow color cycling
+static uint8_t s_rainbowHue      = 0;     // current hue 0-255
 
 // Off-screen buffer for flicker-free clock updates
 static GFXcanvas16* s_clockCanvas = nullptr;
@@ -119,6 +121,8 @@ uint8_t  display_getDayBl()   { return s_dayBl; }
 uint8_t  display_getNightBl() { return s_nightBl; }
 bool     display_getShowIcons(){ return s_showIcons; }
 void     display_setShowIcons(bool show) { s_showIcons = show; }
+bool     display_getRainbow() { return s_rainbow; }
+void     display_setRainbow(bool on) { s_rainbow = on; }
 
 Adafruit_ST7789& display_getTft() { return tft; }
 
@@ -187,6 +191,27 @@ void display_showClock() {
     dim = s_dayDim;
     applyBacklight(s_dayBl);
   }
+
+  // Rainbow mode: override fg with cycling hue
+  if (s_rainbow) {
+    s_rainbowHue += 1;
+    // HSV to RGB565 (S=255, V=255)
+    uint8_t h = s_rainbowHue;
+    uint8_t region = h / 43;
+    uint8_t rem = (h % 43) * 6;
+    uint8_t r, g, b;
+    switch (region) {
+      case 0:  r = 255; g = rem;       b = 0;         break;
+      case 1:  r = 255 - rem; g = 255; b = 0;         break;
+      case 2:  r = 0;   g = 255;       b = rem;       break;
+      case 3:  r = 0;   g = 255 - rem; b = 255;       break;
+      case 4:  r = rem; g = 0;         b = 255;       break;
+      default: r = 255; g = 0;         b = 255 - rem; break;
+    }
+    fg = ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3);
+    dim = dimColor(fg);
+  }
+
   bool colorChanged = (fg != s_curFg);
   if (colorChanged) { s_curFg = fg; s_curDim = dim; }
 
