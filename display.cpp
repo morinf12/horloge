@@ -76,6 +76,7 @@ static char    s_lastClockStr[6] = "";   // "HH:MM" + NUL
 static bool    s_lastColonOn     = true;
 static bool    s_clockInited     = false;
 static int8_t  s_lastNight       = -1;   // -1=unknown, 0=day, 1=night
+static bool    s_showIcons       = true;  // show sun/moon icons
 
 // Off-screen buffer for flicker-free clock updates
 static GFXcanvas16* s_clockCanvas = nullptr;
@@ -107,6 +108,24 @@ void display_setBacklight(uint8_t dayPct, uint8_t nightPct) {
   if (nightPct > 100) nightPct = 100;
   s_dayBl  = dayPct;
   s_nightBl = nightPct;
+}
+
+// Getters
+uint16_t display_getDayMin()  { return s_dayMin; }
+uint16_t display_getNightMin(){ return s_nightMin; }
+uint16_t display_getDayFg()   { return s_dayFg; }
+uint16_t display_getNightFg() { return s_nightFg; }
+uint8_t  display_getDayBl()   { return s_dayBl; }
+uint8_t  display_getNightBl() { return s_nightBl; }
+bool     display_getShowIcons(){ return s_showIcons; }
+void     display_setShowIcons(bool show) { s_showIcons = show; }
+
+Adafruit_ST7789& display_getTft() { return tft; }
+
+void display_resetClock() {
+  s_clockInited = false;
+  s_lastNight = -1;
+  s_lastClockStr[0] = '\0';
 }
 
 static void applyBacklight(uint8_t pct) {
@@ -268,7 +287,7 @@ void display_showClock() {
 
   // Draw sun (day) or moon (night) icon when state changes
   int8_t nightState = night ? 1 : 0;
-  if (nightState != s_lastNight) {
+  if (s_showIcons && nightState != s_lastNight) {
     // Icon geometry — 90px diameter
     const int16_t iconR   = 45;   // main circle radius
     const int16_t iconY   = LAND_H - 50;
@@ -300,6 +319,15 @@ void display_showClock() {
       tft.fillCircle(moonX + 20, iconY - 16, iconR, ST77XX_BLACK);
     }
     s_lastNight = nightState;
+  }
+  if (!s_showIcons && s_lastNight != -1) {
+    // Clear icon areas when icons just got disabled
+    const int16_t iconY   = LAND_H - 50;
+    const int16_t sunX    = 55;
+    const int16_t moonX   = LAND_W - 55;
+    tft.fillRect(sunX  - 50, iconY - 50, 100, 100, ST77XX_BLACK);
+    tft.fillRect(moonX - 50, iconY - 50, 100, 100, ST77XX_BLACK);
+    s_lastNight = -1;
   }
 
   strcpy(s_lastClockStr, timeStr);

@@ -9,6 +9,7 @@
 #include "display.h"
 #include "webui.h"
 #include "buttons.h"
+#include "menu.h"
 #include <WiFi.h>
 
 void setup() {
@@ -19,6 +20,7 @@ void setup() {
   display_begin();
   display_showBoot();
   buttons_begin();
+  menu_begin();
 
   webui_begin();
 
@@ -34,8 +36,12 @@ void loop() {
 
   Button btn = buttons_poll();
   if (btn != BTN_NONE) {
-    Serial.printf("[BTN] %d\n", btn);
-    // TODO: handle menu navigation
+    menu_handleButton(btn);
+  }
+
+  if (menu_isActive()) {
+    menu_draw();
+    return;
   }
 
   static uint32_t lastRefresh = 0;

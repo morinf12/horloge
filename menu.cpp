@@ -1,0 +1,571 @@
+#include "menu.h"
+#include "display.h"
+#include "config.h"
+#include <Preferences.h>
+#include <Adafruit_ST7789.h>
+#include <WiFi.h>
+
+// ---- Layout constants --------------------------------------------------------
+static const int16_t MENU_X  = 10;
+static const int16_t MENU_Y  = 8;
+static const int16_t ROW_H   = 30;
+static const int16_t SCR_W   = 280;
+static const int16_t SCR_H   = 240;
+
+// ---- Menu hierarchy ----------------------------------------------------------
+// Level 0: main menu (list of sub-menus)
+// Level 1: sub-menu items (editable values)
+enum MainItem : uint8_t {
+  MAIN_JOUR = 0,
+  MAIN_NUIT,
+  MAIN_AFFICHAGE,
+  MAIN_WIFI,
+  MAIN_COUNT
+};
+
+static const char* s_mainLabels[] = {
+  "Parametres jour",
+  "Parametres nuit",
+  "Affichage",
+  "WiFi"
+};
+
+// Sub-menu: Jour
+enum SubJour : uint8_t {
+  SJ_HEURE = 0,
+  SJ_COULEUR,
+  SJ_LUMINOSITE,
+  SJ_COUNT
+};
+static const char* s_jourLabels[] = { "Heure", "Couleur", "Luminosite" };
+
+// Sub-menu: Nuit
+enum SubNuit : uint8_t {
+  SN_HEURE = 0,
+  SN_COULEUR,
+  SN_LUMINOSITE,
+  SN_COUNT
+};
+static const char* s_nuitLabels[] = { "Heure", "Couleur", "Luminosite" };
+
+// Sub-menu: Affichage
+enum SubAffichage : uint8_t {
+  SA_ICONES = 0,
+  SA_COUNT
+};
+static const char* s_affLabels[] = { "Icones sol/lune" };
+
+// Sub-menu: WiFi
+enum SubWifi : uint8_t {
+  SW_STATUS = 0,
+  SW_IP,
+  SW_SSID,
+  SW_HOSTNAME,
+  SW_ACTIVER,
+  SW_RESTART_AP,
+  SW_COUNT
+};
+static const char* s_wifiLabels[] = { "Status", "Adresse IP", "SSID", "Nom d'hote", "WiFi actif", "Redemarrer AP" };
+
+// ---- Menu state --------------------------------------------------------------
+static bool     s_active   = false;
+static bool     s_dirty    = true;
+static uint8_t  s_level    = 0;     // 0=main, 1=sub-menu
+static uint8_t  s_mainCur  = 0;     // cursor in main menu
+static uint8_t  s_subCur   = 0;     // cursor in sub-menu
+static bool     s_editing  = false;
+static uint8_t  s_subField = 0;
+
+// Editable values
+static uint16_t s_dayMin, s_nightMin;
+static uint16_t s_dayFg,  s_nightFg;
+static uint8_t  s_dayBl,  s_nightBl;
+static bool     s_showIcons;
+
+// ---- Color helpers ----------------------------------------------------------
+static void rgb565_to_rgb(uint16_t c, uint8_t& r, uint8_t& g, uint8_t& b) {
+  r = ((c >> 11) & 0x1F) << 3;
+  g = ((c >> 5)  & 0x3F) << 2;
+  b = (c & 0x1F) << 3;
+}
+
+static uint16_t rgb_to_565(uint8_t r, uint8_t g, uint8_t b) {
+  return ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3);
+}
+
+// ---- Preferences save -------------------------------------------------------
+static void saveAll() {
+  Preferences prefs;
+  prefs.begin("wifi", false);
+  prefs.putUShort("day_m",   s_dayMin);
+  prefs.putUShort("night_m", s_nightMin);
+  prefs.putUShort("day_c",   s_dayFg);
+  prefs.putUShort("night_c", s_nightFg);
+  prefs.putUChar("day_bl",   s_dayBl);
+  prefs.putUChar("night_bl", s_nightBl);
+  prefs.putBool("icons",     s_showIcons);
+  prefs.end();
+
+  display_setSchedule(s_dayMin, s_nightMin);
+  display_setColors(s_dayFg, s_nightFg);
+  display_setBacklight(s_dayBl, s_nightBl);
+  display_setShowIcons(s_showIcons);
+}
+
+// ---- Sub-menu item count helper ---------------------------------------------
+static uint8_t subCount() {
+  switch (s_mainCur) {
+    case MAIN_JOUR:      return SJ_COUNT;
+    case MAIN_NUIT:      return SN_COUNT;
+    case MAIN_AFFICHAGE: return SA_COUNT;
+    case MAIN_WIFI:      return SW_COUNT;
+    default:             return 0;
+  }
+}
+
+static const char** subLabels() {
+  switch (s_mainCur) {
+    case MAIN_JOUR:      return s_jourLabels;
+    case MAIN_NUIT:      return s_nuitLabels;
+    case MAIN_AFFICHAGE: return s_affLabels;
+    case MAIN_WIFI:      return s_wifiLabels;
+    default:             return nullptr;
+  }
+}
+
+static const char* subTitle() {
+  return s_mainLabels[s_mainCur];
+}
+
+// ---- Public API -------------------------------------------------------------
+void menu_begin() {}
+
+bool menu_isActive() { return s_active; }
+
+static void openMenu() {
+  s_active   = true;
+  s_dirty    = true;
+  s_level    = 0;
+  s_mainCur  = 0;
+  s_subCur   = 0;
+  s_editing  = false;
+  s_subField = 0;
+  // Load current values
+  s_dayMin    = display_getDayMin();
+  s_nightMin  = display_getNightMin();
+  s_dayFg     = display_getDayFg();
+  s_nightFg   = display_getNightFg();
+  s_dayBl     = display_getDayBl();
+  s_nightBl   = display_getNightBl();
+  s_showIcons = display_getShowIcons();
+}
+
+static void closeMenu() {
+  s_active  = false;
+  s_editing = false;
+  saveAll();
+  display_resetClock();
+}
+
+// ---- Value adjustment -------------------------------------------------------
+static uint8_t maxSubFields() {
+  if (s_mainCur == MAIN_JOUR) {
+    if (s_subCur == SJ_HEURE)    return 2;
+    if (s_subCur == SJ_COULEUR)  return 3;
+  } else if (s_mainCur == MAIN_NUIT) {
+    if (s_subCur == SN_HEURE)    return 2;
+    if (s_subCur == SN_COULEUR)  return 3;
+  }
+  return 1;
+}
+
+static void adjustValue(int8_t dir) {
+  if (s_mainCur == MAIN_JOUR) {
+    switch (s_subCur) {
+      case SJ_HEURE:
+        if (s_subField == 0) {
+          int h = s_dayMin / 60 + dir;
+          if (h < 0) h = 23; if (h > 23) h = 0;
+          s_dayMin = h * 60 + s_dayMin % 60;
+        } else {
+          int m = (s_dayMin % 60) + dir * 5;
+          if (m < 0) m = 55; if (m > 55) m = 0;
+          s_dayMin = (s_dayMin / 60) * 60 + m;
+        }
+        display_setSchedule(s_dayMin, s_nightMin);
+        break;
+      case SJ_COULEUR: {
+        uint8_t r, g, b;
+        rgb565_to_rgb(s_dayFg, r, g, b);
+        if (s_subField == 0)      { int v = r + dir*8; if(v<0)v=0; if(v>255)v=255; r=v; }
+        else if (s_subField == 1) { int v = g + dir*8; if(v<0)v=0; if(v>255)v=255; g=v; }
+        else                      { int v = b + dir*8; if(v<0)v=0; if(v>255)v=255; b=v; }
+        s_dayFg = rgb_to_565(r, g, b);
+        display_setColors(s_dayFg, s_nightFg);
+        break;
+      }
+      case SJ_LUMINOSITE: {
+        int v = s_dayBl + dir * 5;
+        if (v < 1) v = 1; if (v > 100) v = 100;
+        s_dayBl = v;
+        display_setBacklight(s_dayBl, s_nightBl);
+        break;
+      }
+    }
+  } else if (s_mainCur == MAIN_NUIT) {
+    switch (s_subCur) {
+      case SN_HEURE:
+        if (s_subField == 0) {
+          int h = s_nightMin / 60 + dir;
+          if (h < 0) h = 23; if (h > 23) h = 0;
+          s_nightMin = h * 60 + s_nightMin % 60;
+        } else {
+          int m = (s_nightMin % 60) + dir * 5;
+          if (m < 0) m = 55; if (m > 55) m = 0;
+          s_nightMin = (s_nightMin / 60) * 60 + m;
+        }
+        display_setSchedule(s_dayMin, s_nightMin);
+        break;
+      case SN_COULEUR: {
+        uint8_t r, g, b;
+        rgb565_to_rgb(s_nightFg, r, g, b);
+        if (s_subField == 0)      { int v = r + dir*8; if(v<0)v=0; if(v>255)v=255; r=v; }
+        else if (s_subField == 1) { int v = g + dir*8; if(v<0)v=0; if(v>255)v=255; g=v; }
+        else                      { int v = b + dir*8; if(v<0)v=0; if(v>255)v=255; b=v; }
+        s_nightFg = rgb_to_565(r, g, b);
+        display_setColors(s_dayFg, s_nightFg);
+        break;
+      }
+      case SN_LUMINOSITE: {
+        int v = s_nightBl + dir * 5;
+        if (v < 1) v = 1; if (v > 100) v = 100;
+        s_nightBl = v;
+        display_setBacklight(s_dayBl, s_nightBl);
+        break;
+      }
+    }
+  } else if (s_mainCur == MAIN_AFFICHAGE) {
+    if (s_subCur == SA_ICONES) {
+      s_showIcons = !s_showIcons;
+      display_setShowIcons(s_showIcons);
+    }
+  } else if (s_mainCur == MAIN_WIFI) {
+    if (s_subCur == SW_ACTIVER) {
+      if (WiFi.getMode() == WIFI_OFF) {
+        // Re-enable: try stored STA, else AP
+        Preferences prefs;
+        prefs.begin("wifi", true);
+        String ssid = prefs.getString("ssid", "");
+        String pass = prefs.getString("pass", "");
+        prefs.end();
+        if (ssid.length()) {
+          WiFi.mode(WIFI_STA);
+          WiFi.begin(ssid.c_str(), pass.length() ? pass.c_str() : nullptr);
+        } else {
+          WiFi.mode(WIFI_AP);
+          WiFi.softAP(WIFI_AP_SSID, WIFI_AP_PASS, WIFI_AP_CHAN);
+        }
+      } else {
+        WiFi.disconnect(true, true);
+        WiFi.mode(WIFI_OFF);
+      }
+    } else if (s_subCur == SW_RESTART_AP) {
+      WiFi.disconnect(true, true);
+      WiFi.mode(WIFI_AP);
+      WiFi.softAP(WIFI_AP_SSID, WIFI_AP_PASS, WIFI_AP_CHAN);
+    }
+  }
+  s_dirty = true;
+}
+
+// ---- Button handling --------------------------------------------------------
+void menu_handleButton(Button btn) {
+  if (!s_active) {
+    if (btn == BTN_A) openMenu();
+    return;
+  }
+
+  if (s_level == 0) {
+    // Main menu navigation
+    switch (btn) {
+      case BTN_B:
+        closeMenu();
+        break;
+      case BTN_UP:
+        s_mainCur = (s_mainCur > 0) ? s_mainCur - 1 : MAIN_COUNT - 1;
+        s_dirty = true;
+        break;
+      case BTN_DOWN:
+        s_mainCur = (s_mainCur < MAIN_COUNT - 1) ? s_mainCur + 1 : 0;
+        s_dirty = true;
+        break;
+      case BTN_A:
+      case BTN_RIGHT:
+        s_level = 1;
+        s_subCur = 0;
+        s_editing = false;
+        s_dirty = true;
+        break;
+      default: break;
+    }
+  } else {
+    // Sub-menu
+    if (!s_editing) {
+      switch (btn) {
+        case BTN_B:
+        case BTN_LEFT:
+          s_level = 0;
+          s_dirty = true;
+          break;
+        case BTN_UP:
+          s_subCur = (s_subCur > 0) ? s_subCur - 1 : subCount() - 1;
+          s_dirty = true;
+          break;
+        case BTN_DOWN:
+          s_subCur = (s_subCur < subCount() - 1) ? s_subCur + 1 : 0;
+          s_dirty = true;
+          break;
+        case BTN_A:
+        case BTN_RIGHT:
+          // WiFi info items are read-only
+          if (s_mainCur == MAIN_WIFI && (s_subCur == SW_STATUS || s_subCur == SW_IP || s_subCur == SW_SSID || s_subCur == SW_HOSTNAME)) {
+            break;
+          }
+          // WiFi action items trigger immediately
+          if (s_mainCur == MAIN_WIFI && (s_subCur == SW_ACTIVER || s_subCur == SW_RESTART_AP)) {
+            adjustValue(+1);
+            break;
+          }
+          s_editing = true;
+          s_subField = 0;
+          s_dirty = true;
+          break;
+        default: break;
+      }
+    } else {
+      // Editing a value
+      switch (btn) {
+        case BTN_B:
+          s_editing = false;
+          s_dirty = true;
+          break;
+        case BTN_UP:
+          adjustValue(+1);
+          break;
+        case BTN_DOWN:
+          adjustValue(-1);
+          break;
+        case BTN_LEFT:
+          if (s_subField > 0) { s_subField--; s_dirty = true; }
+          break;
+        case BTN_RIGHT:
+          if (s_subField < maxSubFields() - 1) { s_subField++; s_dirty = true; }
+          break;
+        case BTN_A:
+          s_editing = false;
+          s_dirty = true;
+          break;
+        default: break;
+      }
+    }
+  }
+}
+
+// ---- Format helpers ---------------------------------------------------------
+static void formatTime(char* buf, uint16_t mins, uint8_t subF, bool editing) {
+  int h = mins / 60, m = mins % 60;
+  if (editing) {
+    if (subF == 0) sprintf(buf, "[%02d]:%02d", h, m);
+    else           sprintf(buf, "%02d:[%02d]", h, m);
+  } else {
+    sprintf(buf, "%02d:%02d", h, m);
+  }
+}
+
+static void formatColor(char* buf, uint16_t c565, uint8_t subF, bool editing) {
+  uint8_t r, g, b;
+  rgb565_to_rgb(c565, r, g, b);
+  if (editing) {
+    const char* fmt[] = { "[%3d] %3d  %3d", " %3d [%3d] %3d", " %3d  %3d [%3d]" };
+    sprintf(buf, fmt[subF], r, g, b);
+  } else {
+    sprintf(buf, "%3d %3d %3d", r, g, b);
+  }
+}
+
+static void formatPct(char* buf, uint8_t pct, bool editing) {
+  if (editing) sprintf(buf, "[%3d%%]", pct);
+  else         sprintf(buf, "%3d%%", pct);
+}
+
+// Get formatted value string for current sub-menu item
+static void getItemValue(uint8_t idx, bool editing, char* buf) {
+  if (s_mainCur == MAIN_JOUR) {
+    switch (idx) {
+      case SJ_HEURE:      formatTime(buf, s_dayMin, s_subField, editing); return;
+      case SJ_COULEUR:    formatColor(buf, s_dayFg, s_subField, editing); return;
+      case SJ_LUMINOSITE: formatPct(buf, s_dayBl, editing); return;
+    }
+  } else if (s_mainCur == MAIN_NUIT) {
+    switch (idx) {
+      case SN_HEURE:      formatTime(buf, s_nightMin, s_subField, editing); return;
+      case SN_COULEUR:    formatColor(buf, s_nightFg, s_subField, editing); return;
+      case SN_LUMINOSITE: formatPct(buf, s_nightBl, editing); return;
+    }
+  } else if (s_mainCur == MAIN_AFFICHAGE) {
+    if (idx == SA_ICONES) {
+      strcpy(buf, s_showIcons ? "OUI" : "NON");
+      return;
+    }
+  } else if (s_mainCur == MAIN_WIFI) {
+    switch (idx) {
+      case SW_STATUS: {
+        wifi_mode_t mode = WiFi.getMode();
+        if (mode == WIFI_OFF)       strcpy(buf, "Desactive");
+        else if (mode == WIFI_AP)   strcpy(buf, "Point d'acces");
+        else if (WiFi.status() == WL_CONNECTED) strcpy(buf, "Connecte");
+        else                        strcpy(buf, "Deconnecte");
+        return;
+      }
+      case SW_IP: {
+        wifi_mode_t mode = WiFi.getMode();
+        if (mode == WIFI_AP)
+          strcpy(buf, WiFi.softAPIP().toString().c_str());
+        else if (mode == WIFI_STA && WiFi.status() == WL_CONNECTED)
+          strcpy(buf, WiFi.localIP().toString().c_str());
+        else
+          strcpy(buf, "---");
+        return;
+      }
+      case SW_SSID: {
+        wifi_mode_t mode = WiFi.getMode();
+        if (mode == WIFI_AP)
+          strcpy(buf, WIFI_AP_SSID);
+        else if (mode == WIFI_STA)
+          strncpy(buf, WiFi.SSID().c_str(), 20);
+        else
+          strcpy(buf, "---");
+        buf[20] = '\0';
+        return;
+      }
+      case SW_HOSTNAME: {
+        const char* h = WiFi.getHostname();
+        strncpy(buf, h ? h : "---", 20);
+        buf[20] = '\0';
+        return;
+      }
+      case SW_ACTIVER:
+        strcpy(buf, (WiFi.getMode() != WIFI_OFF) ? "OUI" : "NON");
+        return;
+      case SW_RESTART_AP:
+        strcpy(buf, "[Executer]");
+        return;
+    }
+  }
+  buf[0] = '\0';
+}
+
+// ---- Drawing ----------------------------------------------------------------
+void menu_draw() {
+  if (!s_active || !s_dirty) return;
+
+  Adafruit_ST7789& tft = display_getTft();
+  tft.fillScreen(ST77XX_BLACK);
+  tft.setFont(nullptr);
+
+  // Hint bar at bottom
+  tft.setTextSize(1);
+  tft.setTextColor(0x7BEF);
+  tft.setCursor(MENU_X, SCR_H - 12);
+  if (s_level == 0)
+    tft.print(F("UP/DN:naviguer  A/R:entrer  B:quitter"));
+  else if (s_editing)
+    tft.print(F("UP/DN:valeur  L/R:champ  B/A:ok"));
+  else
+    tft.print(F("UP/DN:naviguer  A/R:editer  B/L:retour"));
+
+  if (s_level == 0) {
+    // ---- Main menu ----
+    tft.setTextSize(2);
+    tft.setTextColor(ST77XX_CYAN);
+    tft.setCursor(MENU_X, MENU_Y);
+    tft.print(F("MENU"));
+
+    int16_t y = MENU_Y + 30;
+    for (uint8_t i = 0; i < MAIN_COUNT; i++) {
+      bool sel = (i == s_mainCur);
+      if (sel) {
+        tft.fillRect(MENU_X - 2, y - 2, SCR_W - 2*MENU_X + 4, ROW_H, 0x1082);
+      }
+      tft.setTextSize(2);
+      tft.setTextColor(sel ? ST77XX_WHITE : 0x9CF3);
+      tft.setCursor(MENU_X + 10, y + 6);
+      tft.print(s_mainLabels[i]);
+      // Arrow indicator
+      if (sel) {
+        tft.setCursor(SCR_W - 30, y + 6);
+        tft.print(F(">"));
+      }
+      y += ROW_H + 8;
+    }
+  } else {
+    // ---- Sub-menu ----
+    // Title
+    tft.setTextSize(2);
+    tft.setTextColor(ST77XX_CYAN);
+    tft.setCursor(MENU_X, MENU_Y);
+    tft.print(subTitle());
+
+    // Separator line
+    tft.drawFastHLine(MENU_X, MENU_Y + 22, SCR_W - 2*MENU_X, 0x3186);
+
+    int16_t y = MENU_Y + 32;
+    uint8_t count = subCount();
+    const char** labels = subLabels();
+    char valBuf[32];
+
+    for (uint8_t i = 0; i < count; i++) {
+      bool sel = (i == s_subCur);
+      bool itemEdit = sel && s_editing;
+
+      if (sel) {
+        tft.fillRect(MENU_X - 2, y - 2, SCR_W - 2*MENU_X + 4, ROW_H + 14, 0x1082);
+      }
+
+      // Label
+      tft.setTextSize(1);
+      tft.setTextColor(sel ? ST77XX_WHITE : 0x9CF3);
+      tft.setCursor(MENU_X + 4, y + 2);
+      tft.print(labels[i]);
+
+      // Value
+      getItemValue(i, itemEdit, valBuf);
+      tft.setTextSize(2);
+      tft.setTextColor(itemEdit ? ST77XX_GREEN : ST77XX_WHITE);
+      tft.setCursor(MENU_X + 4, y + 16);
+      tft.print(valBuf);
+
+      // Color swatch
+      bool isColor = false;
+      uint16_t swCol = 0;
+      if (s_mainCur == MAIN_JOUR && i == SJ_COULEUR)  { isColor = true; swCol = s_dayFg; }
+      if (s_mainCur == MAIN_NUIT && i == SN_COULEUR)  { isColor = true; swCol = s_nightFg; }
+      if (isColor) {
+        tft.fillRect(SCR_W - 34, y + 4, 22, 26, swCol);
+        tft.drawRect(SCR_W - 34, y + 4, 22, 26, ST77XX_WHITE);
+      }
+
+      // RGB sub-field hint
+      if (itemEdit && isColor) {
+        tft.setTextSize(1);
+        tft.setTextColor(0x7BEF);
+        tft.setCursor(MENU_X + 4, y + 36);
+        tft.print(F("  R    G    B"));
+      }
+
+      y += ROW_H + 18;
+    }
+  }
+
+  s_dirty = false;
+}

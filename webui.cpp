@@ -254,6 +254,13 @@ static const char WIFI_HTML[] PROGMEM = R"HTML(
   </section>
 
   <section class="card">
+    <h2>Nom d'h&#244;te</h2>
+    <input id="hname" type="text" placeholder="horloge" maxlength="32" autocomplete="off">
+    <button onclick="saveHostname()">Enregistrer le nom</button>
+    <div id="hmsg"></div>
+  </section>
+
+  <section class="card">
     <h2>R&#233;initialisation</h2>
     <button class="secondary" onclick="reset()">Oublier le Wi-Fi et red&#233;marrer en AP</button>
   </section>
@@ -325,6 +332,17 @@ async function reset() {
 
 refresh();
 scan();
+fetch('/api/wifi/hostname').then(r=>r.json()).then(d=>{
+  document.getElementById('hname').value = d.hostname||'';
+}).catch(()=>{});
+async function saveHostname() {
+  const h = document.getElementById('hname').value.trim();
+  if (!h) { document.getElementById('hmsg').innerHTML='<span class="err">Nom requis</span>'; return; }
+  const fd = new URLSearchParams(); fd.append('hostname', h);
+  const r = await fetch('/api/wifi/hostname', { method:'POST', body: fd });
+  if (r.ok) document.getElementById('hmsg').innerHTML='<span class="ok">Enregistr\u00e9 (actif au red\u00e9marrage)</span>';
+  else document.getElementById('hmsg').innerHTML='<span class="err">Erreur</span>';
+}
 </script>
 </body>
 </html>
@@ -496,6 +514,21 @@ static void hWifiReset() {
   ESP.restart();
 }
 
+static void hWifiHostname() {
+  if (s_server.method() == HTTP_GET) {
+    String h = s_prefs.getString("hostname", "horloge");
+    s_server.send(200, "application/json", "{\"hostname\":\"" + h + "\"}");
+  } else {
+    if (!s_server.hasArg("hostname")) { s_server.send(400, "text/plain", "missing hostname"); return; }
+    String h = s_server.arg("hostname");
+    h.trim();
+    if (h.length() == 0 || h.length() > 32) { s_server.send(400, "text/plain", "invalid hostname"); return; }
+    s_prefs.putString("hostname", h);
+    WiFi.setHostname(h.c_str());
+    s_server.send(200, "application/json", "{\"ok\":true}");
+  }
+}
+
 // Captive-portal: redirect every unknown URL to the root so phones/laptops
 // auto-pop the Wi-Fi setup page.
 static void hCaptive() {
@@ -566,6 +599,10 @@ void webui_begin() {
   String ssid = s_prefs.getString("ssid", "");
   String pass = s_prefs.getString("pass", "");
 
+  // Apply hostname before WiFi starts
+  String hostname = s_prefs.getString("hostname", "horloge");
+  WiFi.setHostname(hostname.c_str());
+
   bool sta = false;
   if (ssid.length()) sta = tryStation(ssid, pass);
   if (!sta)          startAccessPoint();
@@ -585,6 +622,8 @@ void webui_begin() {
   uint8_t dayBl   = s_prefs.getUChar("day_bl", DEFAULT_DAY_BL);
   uint8_t nightBl = s_prefs.getUChar("night_bl", DEFAULT_NIGHT_BL);
   display_setBacklight(dayBl, nightBl);
+  bool icons = s_prefs.getBool("icons", true);
+  display_setShowIcons(icons);
 
   // Routes
   s_server.on("/",            HTTP_GET,  hRoot);
@@ -597,6 +636,8 @@ void webui_begin() {
   s_server.on("/api/wifi/scan",   HTTP_GET,  hWifiScan);
   s_server.on("/api/wifi/save",   HTTP_POST, hWifiSave);
   s_server.on("/api/wifi/reset",  HTTP_POST, hWifiReset);
+  s_server.on("/api/wifi/hostname", HTTP_GET,  hWifiHostname);
+  s_server.on("/api/wifi/hostname", HTTP_POST, hWifiHostname);
 
   // Captive-portal probe URLs (Apple, Microsoft, Android, etc.)
   s_server.on("/generate_204",      HTTP_GET, hCaptive);
