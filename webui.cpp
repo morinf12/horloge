@@ -122,6 +122,7 @@ static const char INDEX_HTML[] PROGMEM = R"HTML(
   </section>
 
   <footer>
+    <div style="margin-bottom:8px;color:#9fb3d1;font-size:13px" id="fwver"></div>
     <a href="/wifi">Configuration Wi-Fi</a> &nbsp;|&nbsp;
     <a href="/update">Mise &#224; jour firmware (OTA)</a>
   </footer>
@@ -235,6 +236,11 @@ function saveDisplay() {
 }
 document.getElementById('dimLvl').oninput = function(){ document.getElementById('dimLvlV').textContent=this.value; };
 loadDisplay();
+
+// Firmware version
+fetch('/api/version').then(r=>r.json()).then(d=>{
+  document.getElementById('fwver').textContent = 'Firmware: ' + d.version;
+}).catch(()=>{});
 </script>
 </body>
 </html>
@@ -606,6 +612,11 @@ f.addEventListener('submit',e=>{
 static void hRoot()    { s_server.send_P(200, "text/html", INDEX_HTML); }
 static void hOtaPage() { s_server.send_P(200, "text/html", OTA_HTML); }
 
+static void hVersion() {
+  String j = "{\"version\":\"" + String(FW_VERSION) + "\"}";
+  s_server.send(200, "application/json", j);
+}
+
 static void hFont() {
   s_server.sendHeader("Cache-Control", "public, max-age=86400");
   s_server.send_P(200, "font/ttf", (const char*)FONT_TTF, FONT_TTF_LEN);
@@ -918,6 +929,7 @@ void webui_begin() {
   // Routes
   s_server.on("/",            HTTP_GET,  hRoot);
   s_server.on("/font.ttf",    HTTP_GET,  hFont);
+  s_server.on("/api/version", HTTP_GET,  hVersion);
   s_server.on("/api/time",    HTTP_GET,  hTime);
   s_server.on("/api/schedule",HTTP_GET,  hSchedule);
   s_server.on("/api/display", HTTP_GET,  hDisplay);
