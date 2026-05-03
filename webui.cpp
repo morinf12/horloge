@@ -110,6 +110,14 @@ static const char INDEX_HTML[] PROGMEM = R"HTML(
       <label>Arc-en-ciel</label>
       <input id="rainbow" type="checkbox">
     </div>
+    <div class="row">
+      <label>Mode &#233;co (CPU 80MHz, WiFi PS)</label>
+      <input id="eco" type="checkbox">
+    </div>
+    <div class="row">
+      <label>Intensit&#233; dim <span id="dimLvlV">25</span>%</label>
+      <input id="dimLvl" type="range" min="1" max="100" step="5" value="25">
+    </div>
     <button class="primary" onclick="saveDisplay()">Enregistrer</button>
   </section>
 
@@ -211,15 +219,21 @@ function loadDisplay() {
   fetch('/api/display').then(r=>r.json()).then(d=>{
     document.getElementById('icons').checked = d.icons;
     document.getElementById('rainbow').checked = d.rainbow;
+    document.getElementById('eco').checked = d.eco;
+    document.getElementById('dimLvl').value = d.dim_lvl;
+    document.getElementById('dimLvlV').textContent = d.dim_lvl;
   }).catch(()=>{});
 }
 function saveDisplay() {
   const icons = document.getElementById('icons').checked ? 1 : 0;
   const rainbow = document.getElementById('rainbow').checked ? 1 : 0;
-  fetch('/api/display?icons='+icons+'&rainbow='+rainbow).then(()=>{
+  const eco = document.getElementById('eco').checked ? 1 : 0;
+  const dimLvl = document.getElementById('dimLvl').value;
+  fetch('/api/display?icons='+icons+'&rainbow='+rainbow+'&eco='+eco+'&dim_lvl='+dimLvl).then(()=>{
     alert('Enregistr\u00e9\u00a0!');
   });
 }
+document.getElementById('dimLvl').oninput = function(){ document.getElementById('dimLvlV').textContent=this.value; };
 loadDisplay();
 </script>
 </body>
@@ -660,10 +674,25 @@ static void hDisplay() {
     s_prefs.putBool("rainbow", v);
     display_setRainbow(v);
   }
+  if (s_server.hasArg("eco")) {
+    bool v = s_server.arg("eco").toInt() != 0;
+    s_prefs.putBool("eco", v);
+    display_setEcoMode(v);
+  }
+  if (s_server.hasArg("dim_lvl")) {
+    uint8_t v = (uint8_t)s_server.arg("dim_lvl").toInt();
+    if (v < 1) v = 1; if (v > 100) v = 100;
+    s_prefs.putUChar("dim_lvl", v);
+    display_setDimLevel(v);
+  }
   bool icons = s_prefs.getBool("icons", true);
   bool rainbow = s_prefs.getBool("rainbow", false);
+  bool eco = s_prefs.getBool("eco", false);
+  uint8_t dimLvl = s_prefs.getUChar("dim_lvl", 25);
   String j = "{\"icons\":" + String(icons ? "true" : "false")
-           + ",\"rainbow\":" + String(rainbow ? "true" : "false") + "}";
+           + ",\"rainbow\":" + String(rainbow ? "true" : "false")
+           + ",\"eco\":" + String(eco ? "true" : "false")
+           + ",\"dim_lvl\":" + String(dimLvl) + "}";
   s_server.send(200, "application/json", j);
 }
 
@@ -881,6 +910,10 @@ void webui_begin() {
   display_setShowIcons(icons);
   bool rainbow = s_prefs.getBool("rainbow", false);
   display_setRainbow(rainbow);
+  bool eco = s_prefs.getBool("eco", false);
+  display_setEcoMode(eco);
+  uint8_t dimLvl = s_prefs.getUChar("dim_lvl", 25);
+  display_setDimLevel(dimLvl);
 
   // Routes
   s_server.on("/",            HTTP_GET,  hRoot);

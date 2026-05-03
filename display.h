@@ -21,6 +21,11 @@ bool     display_getShowIcons();
 void     display_setShowIcons(bool show);
 bool     display_getRainbow();
 void     display_setRainbow(bool on);
+bool     display_getEcoMode();
+void     display_setEcoMode(bool on);
+uint8_t  display_getDimLevel();
+void     display_setDimLevel(uint8_t pct);
+void     display_sleep(bool on);
 
 // Direct TFT access for menu drawing
 #include <Adafruit_ST7789.h>

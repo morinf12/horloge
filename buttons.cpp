@@ -27,6 +27,13 @@ void buttons_begin() {
   }
 }
 
+bool buttons_isHeld(Button btn) {
+  for (uint8_t i = 0; i < NUM_BTNS; i++) {
+    if (s_btns[i] == btn) return digitalRead(s_pins[i]) == LOW;
+  }
+  return false;
+}
+
 Button buttons_poll() {
   uint32_t now = millis();
 

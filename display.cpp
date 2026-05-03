@@ -79,6 +79,9 @@ static int8_t  s_lastNight       = -1;   // -1=unknown, 0=day, 1=night
 static bool    s_showIcons       = true;  // show sun/moon icons
 static bool    s_rainbow         = false; // rainbow color cycling
 static uint8_t s_rainbowHue      = 0;     // current hue 0-255
+static bool    s_ecoMode         = false; // power saving mode
+static uint8_t s_dimLevel        = 25;    // dim digit intensity % (1-100)
+static bool    s_displaySleeping = false; // TFT in sleep mode
 
 // Off-screen buffer for flicker-free clock updates
 static GFXcanvas16* s_clockCanvas = nullptr;
@@ -90,12 +93,15 @@ void display_setSchedule(uint16_t dayMin, uint16_t nightMin) {
   s_nightMin = nightMin;
 }
 
-// Derive a dim version of an RGB565 color (roughly ÷4 per channel)
+// Derive a dim version of an RGB565 color using s_dimLevel percentage
 static uint16_t dimColor(uint16_t c) {
   uint16_t r = (c >> 11) & 0x1F;
   uint16_t g = (c >> 5)  & 0x3F;
   uint16_t b =  c        & 0x1F;
-  return ((r >> 2) << 11) | ((g >> 2) << 5) | (b >> 2);
+  r = (r * s_dimLevel) / 100;
+  g = (g * s_dimLevel) / 100;
+  b = (b * s_dimLevel) / 100;
+  return (r << 11) | (g << 5) | b;
 }
 
 void display_setColors(uint16_t dayFg, uint16_t nightFg) {
@@ -123,6 +129,29 @@ bool     display_getShowIcons(){ return s_showIcons; }
 void     display_setShowIcons(bool show) { s_showIcons = show; }
 bool     display_getRainbow() { return s_rainbow; }
 void     display_setRainbow(bool on) { s_rainbow = on; }
+bool     display_getEcoMode() { return s_ecoMode; }
+void     display_setEcoMode(bool on) { s_ecoMode = on; }
+uint8_t  display_getDimLevel() { return s_dimLevel; }
+void     display_setDimLevel(uint8_t pct) {
+  if (pct < 1) pct = 1; if (pct > 100) pct = 100;
+  s_dimLevel = pct;
+  // Recompute dim colors
+  s_dayDim   = dimColor(s_dayFg);
+  s_nightDim = dimColor(s_nightFg);
+}
+
+void display_sleep(bool on) {
+  if (on && !s_displaySleeping) {
+    tft.sendCommand(0x10); // SLPIN
+    ledcWrite(BL_PWM_CHANNEL, 0);
+    s_displaySleeping = true;
+  } else if (!on && s_displaySleeping) {
+    tft.sendCommand(0x11); // SLPOUT
+    delay(120);
+    s_displaySleeping = false;
+    s_clockInited = false; // force full redraw
+  }
+}
 
 Adafruit_ST7789& display_getTft() { return tft; }
 
@@ -212,7 +241,7 @@ void display_showClock() {
     dim = dimColor(fg);
   }
 
-  bool colorChanged = (fg != s_curFg);
+  bool colorChanged = (fg != s_curFg || dim != s_curDim);
   if (colorChanged) { s_curFg = fg; s_curDim = dim; }
 
   bool digitsChanged = (strcmp(timeStr, s_lastClockStr) != 0);
@@ -276,10 +305,9 @@ void display_showClock() {
     (int16_t)(3 * digitCellW + colonCellW),
   };
 
-  // Draw dim "8" background for digit cells (skip first cell if blank)
+  // Draw dim "8" background for all digit cells
   cv.setTextColor(s_curDim);
   for (int i = 0; i < 4; i++) {
-    if (d[i] == ' ') continue;   // no background for blank leading digit
     int ci = (i < 2) ? i : i + 1;
     cv.setCursor(cellX[ci], textY);
     cv.print("8");

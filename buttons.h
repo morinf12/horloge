@@ -13,3 +13,4 @@ enum Button : uint8_t {
 
 void buttons_begin();
 Button buttons_poll();   // returns pressed button (with debounce), or BTN_NONE
+bool buttons_isHeld(Button btn);  // true if button pin is currently LOW

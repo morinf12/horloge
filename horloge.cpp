@@ -44,6 +44,10 @@ void loop() {
 
   Button btn = buttons_poll();
   if (btn != BTN_NONE) {
+    // Any button press wakes display if eco sleep
+    if (display_getEcoMode()) {
+      display_sleep(false);
+    }
     menu_handleButton(btn);
   }
 
@@ -52,9 +56,24 @@ void loop() {
     return;
   }
 
+  // Eco mode: apply CPU/WiFi power saving and slower refresh
+  static bool s_ecoApplied = false;
+  bool eco = display_getEcoMode();
+  if (eco && !s_ecoApplied) {
+    setCpuFrequencyMhz(80);
+    if (WiFi.getMode() != WIFI_OFF) WiFi.setSleep(WIFI_PS_MAX_MODEM);
+    s_ecoApplied = true;
+  } else if (!eco && s_ecoApplied) {
+    setCpuFrequencyMhz(240);
+    if (WiFi.getMode() != WIFI_OFF) WiFi.setSleep(WIFI_PS_NONE);
+    display_sleep(false);
+    s_ecoApplied = false;
+  }
+
+  uint32_t interval = eco ? 5000 : 500;
   static uint32_t lastRefresh = 0;
   uint32_t now = millis();
-  if (now - lastRefresh >= 500) {
+  if (now - lastRefresh >= interval) {
     lastRefresh = now;
     display_showClock();
   }
