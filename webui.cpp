@@ -3,6 +3,7 @@
 #include "display.h"
 #include "menu.h"
 #include "font_data.h"
+#include "battery.h"
 #include <WiFi.h>
 #include <ESPmDNS.h>
 #include <WebServer.h>
@@ -116,7 +117,11 @@ static const char INDEX_HTML[] PROGMEM = R"HTML(
     </div>
     <div class="row">
       <label>Intensit&#233; dim <span id="dimLvlV">25</span>%</label>
-      <input id="dimLvl" type="range" min="1" max="100" step="5" value="25">
+      <input id="dimLvl" type="range" min="1" max="100" step="1" value="25">
+    </div>
+    <div class="row">
+      <label>Rotation 180&#176;</label>
+      <input id="rot180" type="checkbox">
     </div>
     <button class="primary" onclick="saveDisplay()">Enregistrer</button>
   </section>
@@ -223,6 +228,7 @@ function loadDisplay() {
     document.getElementById('eco').checked = d.eco;
     document.getElementById('dimLvl').value = d.dim_lvl;
     document.getElementById('dimLvlV').textContent = d.dim_lvl;
+    document.getElementById('rot180').checked = d.rot180;
   }).catch(()=>{});
 }
 function saveDisplay() {
@@ -230,7 +236,8 @@ function saveDisplay() {
   const rainbow = document.getElementById('rainbow').checked ? 1 : 0;
   const eco = document.getElementById('eco').checked ? 1 : 0;
   const dimLvl = document.getElementById('dimLvl').value;
-  fetch('/api/display?icons='+icons+'&rainbow='+rainbow+'&eco='+eco+'&dim_lvl='+dimLvl).then(()=>{
+  const rot180 = document.getElementById('rot180').checked ? 1 : 0;
+  fetch('/api/display?icons='+icons+'&rainbow='+rainbow+'&eco='+eco+'&dim_lvl='+dimLvl+'&rot180='+rot180).then(()=>{
     alert('Enregistr\u00e9\u00a0!');
   });
 }
@@ -239,7 +246,9 @@ loadDisplay();
 
 // Firmware version
 fetch('/api/version').then(r=>r.json()).then(d=>{
-  document.getElementById('fwver').textContent = 'Firmware: ' + d.version;
+  let txt = 'Firmware: ' + d.version;
+  if (d.batt_v > 0) txt += ' | Batterie: ' + d.batt_pct + '% (' + d.batt_v.toFixed(2) + 'V)';
+  document.getElementById('fwver').textContent = txt;
 }).catch(()=>{});
 </script>
 </body>
@@ -613,7 +622,9 @@ static void hRoot()    { s_server.send_P(200, "text/html", INDEX_HTML); }
 static void hOtaPage() { s_server.send_P(200, "text/html", OTA_HTML); }
 
 static void hVersion() {
-  String j = "{\"version\":\"" + String(FW_VERSION) + "\"}";
+  String j = "{\"version\":\"" + String(FW_VERSION) + "\""
+           + ",\"batt_v\":" + String(battery_voltage(), 2)
+           + ",\"batt_pct\":" + String(battery_percent()) + "}";
   s_server.send(200, "application/json", j);
 }
 
@@ -696,14 +707,21 @@ static void hDisplay() {
     s_prefs.putUChar("dim_lvl", v);
     display_setDimLevel(v);
   }
+  if (s_server.hasArg("rot180")) {
+    bool v = s_server.arg("rot180").toInt() != 0;
+    s_prefs.putBool("rot180", v);
+    display_setRotation180(v);
+  }
   bool icons = s_prefs.getBool("icons", true);
   bool rainbow = s_prefs.getBool("rainbow", false);
   bool eco = s_prefs.getBool("eco", false);
   uint8_t dimLvl = s_prefs.getUChar("dim_lvl", 25);
+  bool rot180 = s_prefs.getBool("rot180", false);
   String j = "{\"icons\":" + String(icons ? "true" : "false")
            + ",\"rainbow\":" + String(rainbow ? "true" : "false")
            + ",\"eco\":" + String(eco ? "true" : "false")
-           + ",\"dim_lvl\":" + String(dimLvl) + "}";
+           + ",\"dim_lvl\":" + String(dimLvl)
+           + ",\"rot180\":" + String(rot180 ? "true" : "false") + "}";
   s_server.send(200, "application/json", j);
 }
 
@@ -925,6 +943,8 @@ void webui_begin() {
   display_setEcoMode(eco);
   uint8_t dimLvl = s_prefs.getUChar("dim_lvl", 25);
   display_setDimLevel(dimLvl);
+  bool rot180 = s_prefs.getBool("rot180", false);
+  display_setRotation180(rot180);
 
   // Routes
   s_server.on("/",            HTTP_GET,  hRoot);

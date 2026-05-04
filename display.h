@@ -25,6 +25,8 @@ bool     display_getEcoMode();
 void     display_setEcoMode(bool on);
 uint8_t  display_getDimLevel();
 void     display_setDimLevel(uint8_t pct);
+bool     display_getRotation180();
+void     display_setRotation180(bool on);
 void     display_sleep(bool on);
 
 // Direct TFT access for menu drawing

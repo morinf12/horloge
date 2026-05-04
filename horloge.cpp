@@ -10,6 +10,7 @@
 #include "webui.h"
 #include "buttons.h"
 #include "menu.h"
+#include "battery.h"
 #include <WiFi.h>
 #include <Preferences.h>
 
@@ -20,15 +21,18 @@ void setup() {
 
   display_begin();
 
-  // Load hostname for splash screen
+  // Load hostname and rotation for splash screen
   Preferences prefs;
   prefs.begin("wifi", true);
   String hostname = prefs.getString("hostname", "horloge");
+  bool rot180 = prefs.getBool("rot180", false);
   prefs.end();
+  if (rot180) display_setRotation180(true);
   display_showBoot(hostname.c_str());
 
   buttons_begin();
   menu_begin();
+  battery_begin();
 
   webui_begin();
 
@@ -72,7 +76,12 @@ void loop() {
 
   uint32_t interval = eco ? 5000 : 500;
   static uint32_t lastRefresh = 0;
+  static uint32_t lastBatt = 0;
   uint32_t now = millis();
+  if (now - lastBatt >= 10000) {
+    lastBatt = now;
+    battery_update();
+  }
   if (now - lastRefresh >= interval) {
     lastRefresh = now;
     display_showClock();

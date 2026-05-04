@@ -132,6 +132,13 @@ void     display_setRainbow(bool on) { s_rainbow = on; }
 bool     display_getEcoMode() { return s_ecoMode; }
 void     display_setEcoMode(bool on) { s_ecoMode = on; }
 uint8_t  display_getDimLevel() { return s_dimLevel; }
+static bool s_rot180 = false;
+bool     display_getRotation180() { return s_rot180; }
+void     display_setRotation180(bool on) {
+  s_rot180 = on;
+  tft.setRotation(on ? 1 : 3);  // 3=landscape, 1=landscape flipped 180
+  display_resetClock();
+}
 void     display_setDimLevel(uint8_t pct) {
   if (pct < 1) pct = 1; if (pct > 100) pct = 100;
   s_dimLevel = pct;
