@@ -55,9 +55,11 @@ enum SubAffichage : uint8_t {
   SA_ECO,
   SA_DIM_LEVEL,
   SA_ROTATION,
+  SA_SECONDES,
+  SA_METEO,
   SA_COUNT
 };
-static const char* s_affLabels[] = { "Icones sol/lune", "Arc-en-ciel", "Mode eco", "Intensite dim", "Rotation 180" };
+static const char* s_affLabels[] = { "Icones sol/lune", "Arc-en-ciel", "Mode eco", "Intensite dim", "Rotation 180", "Secondes", "Meteo" };
 
 // Sub-menu: WiFi
 enum SubWifi : uint8_t {
@@ -89,6 +91,8 @@ static bool     s_rainbow;
 static bool     s_ecoMode;
 static uint8_t  s_dimLevel;
 static bool     s_rotation180;
+static bool     s_showSeconds;
+static bool     s_showWeather;
 
 // ---- Color helpers ----------------------------------------------------------
 static void rgb565_to_rgb(uint16_t c, uint8_t& r, uint8_t& g, uint8_t& b) {
@@ -116,6 +120,8 @@ static void saveAll() {
   prefs.putBool("eco",       s_ecoMode);
   prefs.putUChar("dim_lvl",  s_dimLevel);
   prefs.putBool("rot180",    s_rotation180);
+  prefs.putBool("showSec",   s_showSeconds);
+  prefs.putBool("showWx",    s_showWeather);
   prefs.end();
 
   display_setSchedule(s_dayMin, s_nightMin);
@@ -126,6 +132,8 @@ static void saveAll() {
   display_setEcoMode(s_ecoMode);
   display_setDimLevel(s_dimLevel);
   display_setRotation180(s_rotation180);
+  display_setShowSeconds(s_showSeconds);
+  display_setShowWeather(s_showWeather);
 }
 
 // ---- Sub-menu item count helper ---------------------------------------------
@@ -178,6 +186,8 @@ static void openMenu() {
   s_ecoMode   = display_getEcoMode();
   s_dimLevel  = display_getDimLevel();
   s_rotation180 = display_getRotation180();
+  s_showSeconds = display_getShowSeconds();
+  s_showWeather = display_getShowWeather();
 }
 
 static void closeMenu() {
@@ -282,6 +292,12 @@ static void adjustValue(int8_t dir) {
     } else if (s_subCur == SA_ROTATION) {
       s_rotation180 = !s_rotation180;
       display_setRotation180(s_rotation180);
+    } else if (s_subCur == SA_SECONDES) {
+      s_showSeconds = !s_showSeconds;
+      display_setShowSeconds(s_showSeconds);
+    } else if (s_subCur == SA_METEO) {
+      s_showWeather = !s_showWeather;
+      display_setShowWeather(s_showWeather);
     }
   } else if (s_mainCur == MAIN_WIFI) {
     if (s_subCur == SW_ACTIVER) {
@@ -463,6 +479,12 @@ static void getItemValue(uint8_t idx, bool editing, char* buf) {
       return;
     } else if (idx == SA_ROTATION) {
       strcpy(buf, s_rotation180 ? "OUI" : "NON");
+      return;
+    } else if (idx == SA_SECONDES) {
+      strcpy(buf, s_showSeconds ? "OUI" : "NON");
+      return;
+    } else if (idx == SA_METEO) {
+      strcpy(buf, s_showWeather ? "OUI" : "NON");
       return;
     }
   } else if (s_mainCur == MAIN_WIFI) {

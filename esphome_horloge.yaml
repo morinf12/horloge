@@ -1,0 +1,432 @@
+# =============================================================================
+# Horloge — ESPHome version (ESP32-S2)
+# Full-feature: 7-seg clock, day/night colors, weather, battery, menu, OTA
+# =============================================================================
+
+substitutions:
+  device_name: horloge
+  friendly_name: Horloge
+  ap_password: "horloge1234"
+
+esphome:
+  name: ${device_name}
+  friendly_name: ${friendly_name}
+  platformio_options:
+    board_build.flash_mode: dio
+
+esp32:
+  board: esp32-s2-saola-1
+  variant: esp32s2
+  framework:
+    type: arduino
+
+# ---- Logging ----
+logger:
+  level: INFO
+
+# ---- WiFi ----
+wifi:
+  ap:
+    ssid: "${friendly_name}"
+    password: "${ap_password}"
+  # Add your WiFi credentials here:
+  # ssid: !secret wifi_ssid
+  # password: !secret wifi_password
+
+captive_portal:
+
+# ---- OTA + Web Server ----
+ota:
+  platform: esphome
+  password: "${ap_password}"
+
+web_server:
+  port: 80
+
+# ---- Time (NTP) ----
+time:
+  - platform: sntp
+    id: ntp_time
+    timezone: "America/Montreal"
+    servers:
+      - pool.ntp.org
+      - time.nist.gov
+
+# ---- SPI Bus ----
+spi:
+  clk_pin: GPIO12
+  mosi_pin: GPIO11
+
+# ---- Display (ST7789 240x280) ----
+display:
+  - platform: st7789v
+    id: tft
+    cs_pin: GPIO5
+    dc_pin: GPIO7
+    reset_pin: GPIO9
+    model: Custom
+    width: 240
+    height: 280
+    offset_height: 0
+    offset_width: 0
+    rotation: 270  # landscape 280x240
+    update_interval: 500ms
+    lambda: |-
+      // --- Day/Night logic ---
+      auto now = id(ntp_time).now();
+      bool valid = now.is_valid();
+      int cur_min = valid ? now.hour * 60 + now.minute : 0;
+      int day_start = id(day_minute);
+      int night_start = id(night_minute);
+      bool night = false;
+      if (valid) {
+        if (night_start > day_start)
+          night = (cur_min >= night_start || cur_min < day_start);
+        else
+          night = (cur_min >= night_start && cur_min < day_start);
+      }
+
+      Color fg = night ? id(night_color) : id(day_color);
+      Color dim_col = Color(fg.r * id(dim_level) / 100,
+                            fg.g * id(dim_level) / 100,
+                            fg.b * id(dim_level) / 100);
+
+      // --- Backlight ---
+      float bl = night ? id(night_bl) / 100.0f : id(day_bl) / 100.0f;
+      id(backlight).set_level(bl);
+      id(backlight).turn_on();
+
+      it.fill(Color::BLACK);
+
+      if (!valid) {
+        it.printf(140, 120, id(font_clock), fg, TextAlign::CENTER, "--:--");
+        return;
+      }
+
+      // --- Dim "8888" background ---
+      it.printf(140, 80, id(font_clock), dim_col, TextAlign::CENTER, "88:88");
+
+      // --- Time digits ---
+      char tbuf[6];
+      if (now.hour >= 10)
+        snprintf(tbuf, sizeof(tbuf), "%02d:%02d", now.hour, now.minute);
+      else
+        snprintf(tbuf, sizeof(tbuf), " %d:%02d", now.hour, now.minute);
+      it.printf(140, 80, id(font_clock), fg, TextAlign::CENTER, "%s", tbuf);
+
+      // --- Seconds (half size, right-aligned below) ---
+      it.printf(220, 150, id(font_seconds), dim_col, TextAlign::CENTER, "88");
+      char sbuf[3];
+      snprintf(sbuf, sizeof(sbuf), "%02d", now.second);
+      it.printf(220, 150, id(font_seconds), fg, TextAlign::CENTER, "%s", sbuf);
+
+      // --- Sun/Moon icon ---
+      if (id(show_icons)) {
+        int ix = 40, iy = 200;
+        if (!night) {
+          it.filled_circle(ix, iy, 20, Color(255, 255, 0));
+        } else {
+          it.filled_circle(ix, iy, 20, fg);
+          it.filled_circle(ix + 10, iy - 8, 20, Color::BLACK);
+        }
+      }
+
+      // --- Temperature (bottom-right) ---
+      if (!isnan(id(outdoor_temp).state)) {
+        char wbuf[10];
+        snprintf(wbuf, sizeof(wbuf), "%d C", (int)roundf(id(outdoor_temp).state));
+        it.printf(200, 210, id(font_temp), fg, TextAlign::CENTER, "%s", wbuf);
+      }
+
+# ---- Fonts ----
+font:
+  - file:
+      type: gfonts
+      family: "DSEG7 Classic"
+      weight: bold
+    id: font_clock
+    size: 64
+    glyphs: "0123456789: "
+
+  - file:
+      type: gfonts
+      family: "DSEG7 Classic"
+      weight: bold
+    id: font_seconds
+    size: 32
+    glyphs: "0123456789"
+
+  - file:
+      type: gfonts
+      family: "Roboto"
+    id: font_temp
+    size: 28
+    glyphs: "0123456789-° C"
+
+  - file:
+      type: gfonts
+      family: "Roboto"
+    id: font_menu
+    size: 16
+
+# ---- Backlight (PWM) ----
+output:
+  - platform: ledc
+    pin: GPIO3
+    id: backlight
+    frequency: 1000Hz
+
+# ---- Buttons ----
+binary_sensor:
+  - platform: gpio
+    pin:
+      number: GPIO1
+      mode: INPUT_PULLUP
+      inverted: true
+    id: btn_up
+    name: "Button Up"
+    on_press:
+      - display_menu.up: my_menu
+
+  - platform: gpio
+    pin:
+      number: GPIO2
+      mode: INPUT_PULLUP
+      inverted: true
+    id: btn_down
+    name: "Button Down"
+    on_press:
+      - display_menu.down: my_menu
+
+  - platform: gpio
+    pin:
+      number: GPIO4
+      mode: INPUT_PULLUP
+      inverted: true
+    id: btn_left
+    name: "Button Left"
+    on_press:
+      - display_menu.left: my_menu
+
+  - platform: gpio
+    pin:
+      number: GPIO6
+      mode: INPUT_PULLUP
+      inverted: true
+    id: btn_right
+    name: "Button Right"
+    on_press:
+      - display_menu.right: my_menu
+
+  - platform: gpio
+    pin:
+      number: GPIO8
+      mode: INPUT_PULLUP
+      inverted: true
+    id: btn_a
+    name: "Button A"
+    on_press:
+      - display_menu.enter: my_menu
+
+  - platform: gpio
+    pin:
+      number: GPIO10
+      mode: INPUT_PULLUP
+      inverted: true
+    id: btn_b
+    name: "Button B"
+    on_press:
+      - if:
+          condition:
+            display_menu.is_active: my_menu
+          then:
+            - display_menu.back: my_menu
+
+# ---- Battery ADC ----
+sensor:
+  - platform: adc
+    pin: GPIO13
+    id: batt_adc
+    name: "Battery Voltage"
+    update_interval: 10s
+    attenuation: 11db
+    filters:
+      - multiply: 2.0  # voltage divider ratio
+      - sliding_window_moving_average:
+          window_size: 8
+    unit_of_measurement: "V"
+
+  - platform: template
+    name: "Battery Percent"
+    id: batt_percent
+    unit_of_measurement: "%"
+    update_interval: 10s
+    lambda: |-
+      float v = id(batt_adc).state;
+      if (v >= 4.15) return 100.0f;
+      if (v >= 4.05) return 90.0f;
+      if (v >= 3.95) return 80.0f;
+      if (v >= 3.85) return 70.0f;
+      if (v >= 3.78) return 60.0f;
+      if (v >= 3.72) return 50.0f;
+      if (v >= 3.67) return 40.0f;
+      if (v >= 3.62) return 30.0f;
+      if (v >= 3.55) return 20.0f;
+      if (v >= 3.45) return 10.0f;
+      if (v >= 3.30) return 5.0f;
+      return 0.0f;
+
+  # ---- Weather (OpenWeatherMap) ----
+  - platform: http_request
+    id: outdoor_temp
+    name: "Outdoor Temperature"
+    update_interval: 600s
+    # You must configure the http_request component below
+    # and set your API key and city in substitutions or secrets
+    json_path: "$.main.temp"
+    url: !lambda |-
+      return "http://api.openweathermap.org/data/2.5/weather?q=" +
+             id(weather_city) + "&appid=" + id(weather_api_key) +
+             "&units=metric&lang=fr";
+
+# ---- HTTP Request component ----
+http_request:
+  useragent: "ESPHome"
+  timeout: 5s
+
+# ---- Global variables (persistent) ----
+globals:
+  - id: day_minute
+    type: int
+    restore_value: true
+    initial_value: "480"  # 08:00
+
+  - id: night_minute
+    type: int
+    restore_value: true
+    initial_value: "1320"  # 22:00
+
+  - id: day_color
+    type: Color
+    restore_value: false
+    initial_value: "Color(255, 0, 0)"  # red
+
+  - id: night_color
+    type: Color
+    restore_value: false
+    initial_value: "Color(0, 0, 255)"  # blue
+
+  - id: day_bl
+    type: int
+    restore_value: true
+    initial_value: "100"
+
+  - id: night_bl
+    type: int
+    restore_value: true
+    initial_value: "20"
+
+  - id: dim_level
+    type: int
+    restore_value: true
+    initial_value: "25"
+
+  - id: show_icons
+    type: bool
+    restore_value: true
+    initial_value: "true"
+
+  - id: weather_api_key
+    type: std::string
+    restore_value: true
+    initial_value: "''"
+
+  - id: weather_city
+    type: std::string
+    restore_value: true
+    initial_value: "''"
+
+# ---- Display Menu ----
+display_menu:
+  id: my_menu
+  display: tft
+  font: font_menu
+  active: false
+  mode: rotary
+  on_enter:
+    then:
+      - component.update: tft
+  on_leave:
+    then:
+      - component.update: tft
+  items:
+    - type: menu
+      text: "Jour"
+      items:
+        - type: number
+          text: "Heure debut"
+          number:
+            min: 0
+            max: 1439
+            step: 30
+          getter:
+            return id(day_minute);
+          setter:
+            id(day_minute) = (int)x;
+
+        - type: number
+          text: "Luminosite"
+          number:
+            min: 1
+            max: 100
+            step: 5
+          getter:
+            return id(day_bl);
+          setter:
+            id(day_bl) = (int)x;
+
+    - type: menu
+      text: "Nuit"
+      items:
+        - type: number
+          text: "Heure debut"
+          number:
+            min: 0
+            max: 1439
+            step: 30
+          getter:
+            return id(night_minute);
+          setter:
+            id(night_minute) = (int)x;
+
+        - type: number
+          text: "Luminosite"
+          number:
+            min: 1
+            max: 100
+            step: 5
+          getter:
+            return id(night_bl);
+          setter:
+            id(night_bl) = (int)x;
+
+    - type: menu
+      text: "Affichage"
+      items:
+        - type: switch
+          text: "Icones"
+          getter:
+            return id(show_icons);
+          setter:
+            id(show_icons) = x;
+
+        - type: number
+          text: "Intensite dim"
+          number:
+            min: 1
+            max: 100
+            step: 1
+          getter:
+            return id(dim_level);
+          setter:
+            id(dim_level) = (int)x;

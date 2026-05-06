@@ -27,6 +27,10 @@ uint8_t  display_getDimLevel();
 void     display_setDimLevel(uint8_t pct);
 bool     display_getRotation180();
 void     display_setRotation180(bool on);
+bool     display_getShowSeconds();
+void     display_setShowSeconds(bool on);
+bool     display_getShowWeather();
+void     display_setShowWeather(bool on);
 void     display_sleep(bool on);
 void     display_showTemp(float tempC);  // show external temperature on TFT
 

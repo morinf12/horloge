@@ -213,6 +213,10 @@ function saveSchedule() {
   const dbl = document.getElementById('dayBL').value;
   const nbl = document.getElementById('nightBL').value;
   fetch('/api/schedule?day='+d+'&night='+n+'&dayc='+dc+'&nightc='+nc+'&daybl='+dbl+'&nightbl='+nbl).then(()=>{
+    _dayMin = d; _nightMin = n;
+    _dayCol = document.getElementById('dayC').value;
+    _nightCol = document.getElementById('nightC').value;
+    updateClockColor();
     alert('Enregistr\u00e9\u00a0!');
   });
 }
@@ -749,16 +753,30 @@ static void hDisplay() {
     s_prefs.putBool("rot180", v);
     display_setRotation180(v);
   }
+  if (s_server.hasArg("showSec")) {
+    bool v = s_server.arg("showSec").toInt() != 0;
+    s_prefs.putBool("showSec", v);
+    display_setShowSeconds(v);
+  }
+  if (s_server.hasArg("showWx")) {
+    bool v = s_server.arg("showWx").toInt() != 0;
+    s_prefs.putBool("showWx", v);
+    display_setShowWeather(v);
+  }
   bool icons = s_prefs.getBool("icons", true);
   bool rainbow = s_prefs.getBool("rainbow", false);
   bool eco = s_prefs.getBool("eco", false);
   uint8_t dimLvl = s_prefs.getUChar("dim_lvl", 25);
   bool rot180 = s_prefs.getBool("rot180", false);
+  bool showSec = s_prefs.getBool("showSec", true);
+  bool showWx = s_prefs.getBool("showWx", true);
   String j = "{\"icons\":" + String(icons ? "true" : "false")
            + ",\"rainbow\":" + String(rainbow ? "true" : "false")
            + ",\"eco\":" + String(eco ? "true" : "false")
            + ",\"dim_lvl\":" + String(dimLvl)
-           + ",\"rot180\":" + String(rot180 ? "true" : "false") + "}";
+           + ",\"rot180\":" + String(rot180 ? "true" : "false")
+           + ",\"showSec\":" + String(showSec ? "true" : "false")
+           + ",\"showWx\":" + String(showWx ? "true" : "false") + "}";
   s_server.send(200, "application/json", j);
 }
 
@@ -941,6 +959,7 @@ static void hOtaUpload() {
 static bool tryStation(const String& ssid, const String& pass) {
   Serial.printf("[WiFi] STA -> %s\n", ssid.c_str());
   WiFi.mode(WIFI_STA);
+  WiFi.setAutoReconnect(true);
   WiFi.begin(ssid.c_str(), pass.length() ? pass.c_str() : (const char*)nullptr);
   uint32_t t0 = millis();
   while (millis() - t0 < 15000) {
@@ -1009,6 +1028,10 @@ void webui_begin() {
   display_setDimLevel(dimLvl);
   bool rot180 = s_prefs.getBool("rot180", false);
   display_setRotation180(rot180);
+  bool showSec = s_prefs.getBool("showSec", true);
+  display_setShowSeconds(showSec);
+  bool showWx = s_prefs.getBool("showWx", true);
+  display_setShowWeather(showWx);
 
   // Routes
   s_server.on("/",            HTTP_GET,  hRoot);

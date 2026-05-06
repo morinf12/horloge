@@ -82,6 +82,8 @@ static bool    s_rainbow         = false; // rainbow color cycling
 static uint8_t s_rainbowHue      = 0;     // current hue 0-255
 static bool    s_ecoMode         = false; // power saving mode
 static uint8_t s_dimLevel        = 25;    // dim digit intensity % (1-100)
+static bool    s_showSeconds     = true;  // show seconds display
+static bool    s_showWeather     = true;  // show weather temperature
 static bool    s_displaySleeping = false; // TFT in sleep mode
 
 // Off-screen buffer for flicker-free clock updates
@@ -140,6 +142,29 @@ void     display_setEcoMode(bool on) { s_ecoMode = on; }
 uint8_t  display_getDimLevel() { return s_dimLevel; }
 static bool s_rot180 = false;
 bool     display_getRotation180() { return s_rot180; }
+bool     display_getShowSeconds() { return s_showSeconds; }
+void     display_setShowSeconds(bool on) {
+  if (on == s_showSeconds) return;
+  s_showSeconds = on;
+  if (!on) {
+    // Clear seconds area
+    int16_t halfW = s_secFullW / 2;
+    int16_t halfH = s_secFullH / 2;
+    tft.fillRect(s_secDispX, s_secDispY, halfW, halfH, ST77XX_BLACK);
+    s_lastSec = -1;
+  }
+}
+bool     display_getShowWeather() { return s_showWeather; }
+void     display_setShowWeather(bool on) {
+  if (on == s_showWeather) return;
+  s_showWeather = on;
+  if (!on) {
+    // Clear temperature area
+    const int16_t tx = LAND_W - 158;
+    const int16_t ty = LAND_H - 50;
+    tft.fillRect(tx, ty, 140, 50, ST77XX_BLACK);
+  }
+}
 void     display_setRotation180(bool on) {
   s_rot180 = on;
   tft.setRotation(on ? 1 : 3);  // 3=landscape, 1=landscape flipped 180
@@ -362,7 +387,7 @@ void display_showClock() {
   tft.drawRGBBitmap(s_canvasX, s_canvasY, cv.getBuffer(), cv.width(), cv.height());
 
   // Draw seconds below the clock using SevenSeg128 at half scale, right-aligned
-  if (validTime && s_secCanvas && (ti.tm_sec != s_lastSec || colorChanged || digitsChanged)) {
+  if (s_showSeconds && validTime && s_secCanvas && (ti.tm_sec != s_lastSec || colorChanged || digitsChanged)) {
     GFXcanvas16& sc = *s_secCanvas;
     sc.fillScreen(ST77XX_BLACK);
     sc.setFont(&SevenSeg128);
@@ -453,6 +478,7 @@ static float s_lastTemp = -999.0f;
 static uint16_t s_lastTempColor = 0;
 
 void display_showTemp(float tempC) {
+  if (!s_showWeather) return;
   // Redraw if temp changed or color changed
   bool colorChanged = (s_curFg != s_lastTempColor);
   if (fabsf(tempC - s_lastTemp) < 0.1f && !colorChanged) return;
