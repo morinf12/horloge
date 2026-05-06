@@ -96,5 +96,6 @@ void loop() {
   if (now - lastRefresh >= interval) {
     lastRefresh = now;
     display_showClock();
+    if (weather_valid()) display_showTemp(weather_temp());
   }
 }
