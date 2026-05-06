@@ -6,6 +6,9 @@
 #include "battery.h"
 #include "weather.h"
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
+#include <HTTPClient.h>
+#include <ArduinoJson.h>
 #include <ESPmDNS.h>
 #include <WebServer.h>
 #include <DNSServer.h>
@@ -631,8 +634,15 @@ static const char OTA_HTML[] PROGMEM = R"HTML(
 input,button{padding:10px;font-size:15px}
 button{background:#1f6feb;color:white;border:0;border-radius:6px;cursor:pointer}
 .bar{height:14px;background:#243049;border-radius:7px;overflow:hidden;margin-top:14px}
-.bar>div{height:100%;background:#7ee787;width:0%}</style>
+.bar>div{height:100%;background:#7ee787;width:0%}
+#upd{margin:18px 0;padding:14px;background:#161b22;border-radius:8px;border:1px solid #30363d}</style>
 <h2>Mise &#224; jour firmware</h2>
+
+<div id="upd">
+  <button onclick="checkUpdate()">V&#233;rifier les mises &#224; jour</button>
+  <span id="updStatus" style="margin-left:12px;color:#9fb3d1"></span>
+</div>
+
 <p>S&#233;lectionnez un fichier <code>.bin</code> compil&#233; et envoyez-le.</p>
 <form id="f" enctype="multipart/form-data" method="POST" action="/update">
   <label style="display:inline-block;padding:10px;background:#1f6feb;color:white;border-radius:6px;cursor:pointer;font-size:15px;margin-bottom:8px">Choisir un fichier<input type="file" name="firmware" accept=".bin" required style="display:none" onchange="document.getElementById('fn').textContent=this.files[0]?.name||'Aucun fichier'"></label>
@@ -643,6 +653,21 @@ button{background:#1f6feb;color:white;border:0;border-radius:6px;cursor:pointer}
 <pre id="log"></pre>
 <p><a style="color:#7ee787" href="/">&laquo; retour</a></p>
 <script>
+function checkUpdate(){
+  const s=document.getElementById('updStatus');
+  s.textContent='V\u00e9rification...';
+  s.style.color='#9fb3d1';
+  fetch('/api/check_update').then(r=>r.json()).then(d=>{
+    if(d.error){ s.textContent='Erreur: '+d.error; s.style.color='#f85149'; return; }
+    s.innerHTML='Actuel: <b>'+d.current+'</b> | Dernier: <b>'+d.latest+'</b>';
+    if(d.current===d.latest || d.latest==='?'){
+      s.innerHTML+=' &#x2714; &#192; jour';s.style.color='#7ee787';
+    } else {
+      s.innerHTML+=' &#x26A0; <a href="'+d.url+'" target="_blank" style="color:#58a6ff">'+d.name+'</a> disponible';
+      s.style.color='#d29922';
+    }
+  }).catch(()=>{ s.textContent='Erreur r\u00e9seau'; s.style.color='#f85149'; });
+}
 const f=document.getElementById('f'),p=document.getElementById('p'),l=document.getElementById('log');
 f.addEventListener('submit',e=>{
   e.preventDefault();
@@ -667,6 +692,43 @@ static void hVersion() {
            + ",\"batt_v\":" + String(battery_voltage(), 2)
            + ",\"batt_pct\":" + String(battery_percent()) + "}";
   s_server.send(200, "application/json", j);
+}
+
+static void hCheckUpdate() {
+  if (WiFi.status() != WL_CONNECTED) {
+    s_server.send(200, "application/json",
+      "{\"error\":\"WiFi non connect\\u00e9\"}");
+    return;
+  }
+  WiFiClientSecure client;
+  client.setInsecure(); // skip cert verification (hobby project)
+  HTTPClient http;
+  http.begin(client, "https://api.github.com/repos/morinf12/horloge/releases/latest");
+  http.addHeader("User-Agent", "ESP32-Horloge");
+  http.setTimeout(8000);
+  int code = http.GET();
+  if (code != 200) {
+    String err = "{\"error\":\"HTTP " + String(code) + "\"}";
+    s_server.send(200, "application/json", err);
+    http.end();
+    return;
+  }
+  String payload = http.getString();
+  http.end();
+
+  JsonDocument doc;
+  if (deserializeJson(doc, payload)) {
+    s_server.send(200, "application/json", "{\"error\":\"JSON parse\"}");
+    return;
+  }
+  const char* tag  = doc["tag_name"];
+  const char* name = doc["name"];
+  const char* url  = doc["html_url"];
+  String resp = "{\"current\":\"" + String(FW_VERSION) + "\""
+              + ",\"latest\":\"" + String(tag ? tag : "?") + "\""
+              + ",\"name\":\"" + String(name ? name : "") + "\""
+              + ",\"url\":\"" + String(url ? url : "") + "\"}";
+  s_server.send(200, "application/json", resp);
 }
 
 static void hFont() {
@@ -1037,6 +1099,7 @@ void webui_begin() {
   s_server.on("/",            HTTP_GET,  hRoot);
   s_server.on("/font.ttf",    HTTP_GET,  hFont);
   s_server.on("/api/version", HTTP_GET,  hVersion);
+  s_server.on("/api/check_update", HTTP_GET, hCheckUpdate);
   s_server.on("/api/time",    HTTP_GET,  hTime);
   s_server.on("/api/schedule",HTTP_GET,  hSchedule);
   s_server.on("/api/display", HTTP_GET,  hDisplay);
