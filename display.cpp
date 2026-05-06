@@ -76,6 +76,7 @@ static char    s_lastClockStr[6] = "";   // "HH:MM" + NUL
 static bool    s_lastColonOn     = true;
 static bool    s_clockInited     = false;
 static int8_t  s_lastNight       = -1;   // -1=unknown, 0=day, 1=night
+static int8_t  s_lastSec         = -1;   // last drawn seconds
 static bool    s_showIcons       = true;  // show sun/moon icons
 static bool    s_rainbow         = false; // rainbow color cycling
 static uint8_t s_rainbowHue      = 0;     // current hue 0-255
@@ -85,8 +86,13 @@ static bool    s_displaySleeping = false; // TFT in sleep mode
 
 // Off-screen buffer for flicker-free clock updates
 static GFXcanvas16* s_clockCanvas = nullptr;
+static GFXcanvas16* s_secCanvas   = nullptr;  // seconds at full size (to be scaled 1/2)
 static int16_t      s_canvasX = 0;    // screen position of canvas
 static int16_t      s_canvasY = 0;
+static int16_t      s_secDispX = 0;   // screen position of seconds (half-scale)
+static int16_t      s_secDispY = 0;
+static int16_t      s_secFullW = 0;   // full-size canvas width for seconds
+static int16_t      s_secFullH = 0;   // full-size canvas height for seconds
 
 void display_setSchedule(uint16_t dayMin, uint16_t nightMin) {
   s_dayMin  = dayMin;
@@ -278,11 +284,21 @@ void display_showClock() {
     if (s_clockCanvas) delete s_clockCanvas;
     s_clockCanvas = new GFXcanvas16(cvW, cvH);
 
+    // Seconds canvas: 2 digits at full SevenSeg128 size, will be displayed at half scale
+    s_secFullW = 2 * digitCellW;
+    s_secFullH = (int16_t)bh + 4;
+    if (s_secCanvas) delete s_secCanvas;
+    s_secCanvas = new GFXcanvas16(s_secFullW, s_secFullH);
+    // Half-scale position: right-aligned with main clock, below it
+    s_secDispX = s_canvasX + totalW - s_secFullW / 2;
+    s_secDispY = s_canvasY + cvH + 2;
+
     tft.fillScreen(ST77XX_BLACK);
     s_clockInited = true;
     s_lastClockStr[0] = '\0';
     s_lastColonOn = !colonOn;
     s_lastNight = -1;        // force icon draw
+    s_lastSec   = -1;        // force seconds draw
     digitsChanged = true;    // force full draw
     colonChanged  = true;
   }
@@ -345,48 +361,86 @@ void display_showClock() {
   // Push canvas to display in one shot
   tft.drawRGBBitmap(s_canvasX, s_canvasY, cv.getBuffer(), cv.width(), cv.height());
 
+  // Draw seconds below the clock using SevenSeg128 at half scale, right-aligned
+  if (validTime && s_secCanvas && (ti.tm_sec != s_lastSec || colorChanged || digitsChanged)) {
+    GFXcanvas16& sc = *s_secCanvas;
+    sc.fillScreen(ST77XX_BLACK);
+    sc.setFont(&SevenSeg128);
+    sc.setTextSize(1);
+
+    int16_t digitCellW = fontCharAdvance(&SevenSeg128, '8');
+    int16_t bx, by;
+    uint16_t bw, bh;
+    sc.getTextBounds("8", 0, 0, &bx, &by, &bw, &bh);
+    int16_t textY = -by + 2;
+
+    // Draw dim "88" background
+    sc.setTextColor(s_curDim);
+    sc.setCursor(0, textY);
+    sc.print("88");
+
+    // Draw bright seconds digits, right-aligned in cells
+    sc.setTextColor(s_curFg);
+    char secBuf[3];
+    snprintf(secBuf, sizeof(secBuf), "%02d", ti.tm_sec);
+    for (int i = 0; i < 2; i++) {
+      int16_t charAdv = fontCharAdvance(&SevenSeg128, secBuf[i]);
+      int16_t xOff = digitCellW - charAdv;
+      char s[2] = { secBuf[i], '\0' };
+      sc.setCursor(i * digitCellW + xOff, textY);
+      sc.print(s);
+    }
+
+    // Blit at half scale to TFT (nearest-neighbor 2:1 downscale)
+    int16_t halfW = s_secFullW / 2;
+    int16_t halfH = s_secFullH / 2;
+    uint16_t* buf = sc.getBuffer();
+    for (int16_t y = 0; y < halfH; y++) {
+      for (int16_t x = 0; x < halfW; x++) {
+        uint16_t px = buf[(y * 2) * s_secFullW + (x * 2)];
+        tft.drawPixel(s_secDispX + x, s_secDispY + y, px);
+      }
+    }
+    s_lastSec = ti.tm_sec;
+  }
+
   // Draw sun (day) or moon (night) icon when state changes
   int8_t nightState = night ? 1 : 0;
   if (s_showIcons && nightState != s_lastNight) {
     // Icon geometry — 90px diameter
     const int16_t iconR   = 45;   // main circle radius
     const int16_t iconY   = LAND_H - 50;
-    const int16_t sunX    = 55;
-    const int16_t moonX   = LAND_W - 55;
+    const int16_t iconX   = 55;
     const int16_t clearW  = 100;
     const int16_t clearH  = 100;
 
-    // Clear both icon areas
-    tft.fillRect(sunX  - clearW/2, iconY - clearH/2, clearW, clearH, ST77XX_BLACK);
-    tft.fillRect(moonX - clearW/2, iconY - clearH/2, clearW, clearH, ST77XX_BLACK);
+    // Clear icon area
+    tft.fillRect(iconX - clearW/2, iconY - clearH/2, clearW, clearH, ST77XX_BLACK);
 
     if (!night) {
       // Draw sun: yellow circle + 8 rays
       const uint16_t sunCol = 0xFFE0; // yellow
-      tft.fillCircle(sunX, iconY, iconR - 8, sunCol);
+      tft.fillCircle(iconX, iconY, iconR - 8, sunCol);
       for (int a = 0; a < 8; a++) {
         float rad = a * 0.7854f; // PI/4
-        int16_t x1 = sunX + (int16_t)((iconR - 6) * cosf(rad));
+        int16_t x1 = iconX + (int16_t)((iconR - 6) * cosf(rad));
         int16_t y1 = iconY + (int16_t)((iconR - 6) * sinf(rad));
-        int16_t x2 = sunX + (int16_t)((iconR + 2) * cosf(rad));
+        int16_t x2 = iconX + (int16_t)((iconR + 2) * cosf(rad));
         int16_t y2 = iconY + (int16_t)((iconR + 2) * sinf(rad));
         tft.drawLine(x1, y1, x2, y2, sunCol);
       }
     } else {
-      // Draw crescent moon: white circle minus black circle offset
-      const uint16_t moonCol = 0xC61F; // light blue-white
-      tft.fillCircle(moonX, iconY, iconR, moonCol);
-      tft.fillCircle(moonX + 20, iconY - 16, iconR, ST77XX_BLACK);
+      // Draw crescent moon using night foreground color
+      tft.fillCircle(iconX, iconY, iconR, fg);
+      tft.fillCircle(iconX + 20, iconY - 16, iconR, ST77XX_BLACK);
     }
     s_lastNight = nightState;
   }
   if (!s_showIcons && s_lastNight != -1) {
     // Clear icon areas when icons just got disabled
     const int16_t iconY   = LAND_H - 50;
-    const int16_t sunX    = 55;
-    const int16_t moonX   = LAND_W - 55;
-    tft.fillRect(sunX  - 50, iconY - 50, 100, 100, ST77XX_BLACK);
-    tft.fillRect(moonX - 50, iconY - 50, 100, 100, ST77XX_BLACK);
+    const int16_t iconX   = 55;
+    tft.fillRect(iconX - 50, iconY - 50, 100, 100, ST77XX_BLACK);
     s_lastNight = -1;
   }
 
