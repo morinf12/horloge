@@ -447,3 +447,30 @@ void display_showClock() {
   strcpy(s_lastClockStr, timeStr);
   s_lastColonOn = colonOn;
 }
+
+// ---- External temperature display (bottom-right) ----------------------------
+static float s_lastTemp = -999.0f;
+
+void display_showTemp(float tempC) {
+  // Only redraw if changed by >= 0.1°C
+  if (fabsf(tempC - s_lastTemp) < 0.1f) return;
+  s_lastTemp = tempC;
+
+  // Position: bottom-right
+  const int16_t tx = LAND_W - 90;
+  const int16_t ty = LAND_H - 22;
+
+  // Clear area
+  tft.fillRect(tx, ty, 90, 22, ST77XX_BLACK);
+
+  // Draw temperature
+  tft.setFont(NULL);
+  tft.setTextSize(2);
+  tft.setTextColor(s_curFg);
+  tft.setCursor(tx, ty + 3);
+
+  char buf[10];
+  int t = (int)roundf(tempC);
+  snprintf(buf, sizeof(buf), "%d%cC", t, (char)247);  // 247 = degree symbol in default font
+  tft.print(buf);
+}

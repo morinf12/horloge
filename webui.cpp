@@ -4,6 +4,7 @@
 #include "menu.h"
 #include "font_data.h"
 #include "battery.h"
+#include "weather.h"
 #include <WiFi.h>
 #include <ESPmDNS.h>
 #include <WebServer.h>
@@ -126,6 +127,20 @@ static const char INDEX_HTML[] PROGMEM = R"HTML(
     <button class="primary" onclick="saveDisplay()">Enregistrer</button>
   </section>
 
+  <section class="card">
+    <h2>M&#233;t&#233;o</h2>
+    <div class="row">
+      <label>Cl&#233; API OpenWeather</label>
+      <input id="wKey" type="text" placeholder="votre cl&#233; API" autocomplete="off">
+    </div>
+    <div class="row">
+      <label>Ville</label>
+      <input id="wCity" type="text" placeholder="Montreal,CA" autocomplete="off">
+    </div>
+    <div id="wStatus" style="font-size:13px;color:#9fb3d1;margin:8px 0"></div>
+    <button class="primary" onclick="saveWeather()">Enregistrer</button>
+  </section>
+
   <footer>
     <div style="margin-bottom:8px;color:#9fb3d1;font-size:13px" id="fwver"></div>
     <a href="/wifi">Configuration Wi-Fi</a> &nbsp;|&nbsp;
@@ -243,6 +258,28 @@ function saveDisplay() {
 }
 document.getElementById('dimLvl').oninput = function(){ document.getElementById('dimLvlV').textContent=this.value; };
 loadDisplay();
+
+// Weather config
+function loadWeather() {
+  fetch('/api/weather').then(r=>r.json()).then(d=>{
+    document.getElementById('wKey').value = d.key||'';
+    document.getElementById('wCity').value = d.city||'';
+    if (d.temp !== null) {
+      document.getElementById('wStatus').textContent = 'Temp: ' + d.temp.toFixed(1) + '\u00b0C - ' + (d.desc||'');
+    }
+  }).catch(()=>{});
+}
+function saveWeather() {
+  const key = document.getElementById('wKey').value.trim();
+  const city = document.getElementById('wCity').value.trim();
+  const fd = new URLSearchParams();
+  fd.append('key', key);
+  fd.append('city', city);
+  fetch('/api/weather', { method:'POST', body: fd }).then(()=>{
+    alert('Enregistr\u00e9\u00a0!');
+  });
+}
+loadWeather();
 
 // Firmware version
 fetch('/api/version').then(r=>r.json()).then(d=>{
@@ -725,6 +762,33 @@ static void hDisplay() {
   s_server.send(200, "application/json", j);
 }
 
+// ---------------- Weather config handler -------------------------------------
+static void hWeather() {
+  if (s_server.method() == HTTP_POST) {
+    String key  = s_server.hasArg("key")  ? s_server.arg("key")  : "";
+    String city = s_server.hasArg("city") ? s_server.arg("city") : "";
+    key.trim(); city.trim();
+    s_prefs.putString("w_key", key);
+    s_prefs.putString("w_city", city);
+    // Reload weather module config
+    weather_begin();
+    s_server.send(200, "application/json", "{\"ok\":true}");
+    return;
+  }
+  // GET: return current config + last reading
+  String key  = s_prefs.getString("w_key", "");
+  String city = s_prefs.getString("w_city", "");
+  String j = "{\"key\":\"" + key + "\",\"city\":\"" + city + "\"";
+  if (weather_valid()) {
+    j += ",\"temp\":" + String(weather_temp(), 1);
+    j += ",\"desc\":\"" + String(weather_desc()) + "\"";
+  } else {
+    j += ",\"temp\":null,\"desc\":\"\"";
+  }
+  j += "}";
+  s_server.send(200, "application/json", j);
+}
+
 // ---------------- Wi-Fi config / captive portal ------------------------------
 static void hWifiPage() { s_server.send_P(200, "text/html", WIFI_HTML); }
 
@@ -953,6 +1017,8 @@ void webui_begin() {
   s_server.on("/api/time",    HTTP_GET,  hTime);
   s_server.on("/api/schedule",HTTP_GET,  hSchedule);
   s_server.on("/api/display", HTTP_GET,  hDisplay);
+  s_server.on("/api/weather", HTTP_GET,  hWeather);
+  s_server.on("/api/weather", HTTP_POST, hWeather);
 
   s_server.on("/wifi",            HTTP_GET,  hWifiPage);
   s_server.on("/api/wifi/status", HTTP_GET,  hWifiStatus);

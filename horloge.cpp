@@ -11,6 +11,7 @@
 #include "buttons.h"
 #include "menu.h"
 #include "battery.h"
+#include "weather.h"
 #include <WiFi.h>
 #include <Preferences.h>
 
@@ -33,12 +34,16 @@ void setup() {
   buttons_begin();
   menu_begin();
   battery_begin();
+  weather_begin();
 
   webui_begin();
 
   // Show IP address on boot screen
   IPAddress ip = (WiFi.getMode() == WIFI_AP) ? WiFi.softAPIP() : WiFi.localIP();
   display_showIP(ip.toString().c_str());
+
+  // First weather fetch right away
+  weather_update();
 
   delay(5000);
 }
@@ -77,10 +82,16 @@ void loop() {
   uint32_t interval = eco ? 5000 : 500;
   static uint32_t lastRefresh = 0;
   static uint32_t lastBatt = 0;
+  static uint32_t lastWeather = 0;
   uint32_t now = millis();
   if (now - lastBatt >= 10000) {
     lastBatt = now;
     battery_update();
+  }
+  if (now - lastWeather >= 60000) {  // check every 60s (module throttles to 10min)
+    lastWeather = now;
+    weather_update();
+    if (weather_valid()) display_showTemp(weather_temp());
   }
   if (now - lastRefresh >= interval) {
     lastRefresh = now;
