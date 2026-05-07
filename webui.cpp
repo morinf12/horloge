@@ -667,33 +667,14 @@ function checkUpdate(){
       s.innerHTML+=' &#x26A0; Mise \u00e0 jour disponible: <a href="'+d.html_url+'" target="_blank" style="color:#58a6ff">'+
         (d.name||tag)+'</a>';
       s.style.color='#d29922';
-      // Find .bin asset for auto-install
+      // Find .bin asset for direct download link
       const bin=d.assets&&d.assets.find(a=>a.name.endsWith('.bin'));
       if(bin){
-        s.innerHTML+='<br><button onclick="installUpdate(\''+bin.browser_download_url+'\')"\
- style="margin-top:8px;background:#238636">Installer automatiquement</button>';
+        s.innerHTML+='<br><a href="'+bin.browser_download_url+'" style="display:inline-block;margin-top:8px;padding:10px 16px;background:#238636;color:white;border-radius:6px;text-decoration:none">T\u00e9l\u00e9charger firmware.bin</a>';
+        s.innerHTML+='<br><small style="color:#9fb3d1">Puis utilisez le formulaire ci-dessous pour l\'envoyer</small>';
       }
     }
-  }).catch(e=>{s.textContent='Erreur: '+e.message;s.style.color='#f85149';});
-}
-function installUpdate(url){
-  const s=document.getElementById('updStatus');
-  const p=document.getElementById('p');
-  s.textContent='T\u00e9l\u00e9chargement du firmware...';s.style.color='#9fb3d1';
-  fetch(url).then(r=>{if(!r.ok)throw new Error('DL err '+r.status);return r.blob();})
-  .then(blob=>{
-    s.textContent='Envoi au ESP32...';
-    const fd=new FormData();
-    fd.append('firmware',blob,'firmware.bin');
-    const x=new XMLHttpRequest();
-    x.upload.onprogress=ev=>{if(ev.lengthComputable){
-      p.style.width=(ev.loaded/ev.total*100).toFixed(1)+'%';}};
-    x.onload=()=>{
-      if(x.status===200){s.textContent='OK! Red\u00e9marrage...';s.style.color='#7ee787';}
-      else{s.textContent='Erreur flash: '+x.responseText;s.style.color='#f85149';}};
-    x.onerror=()=>{s.textContent='Erreur envoi';s.style.color='#f85149';};
-    x.open('POST','/update');x.send(fd);
-  }).catch(e=>{s.textContent='Erreur: '+e.message;s.style.color='#f85149';});
+  }).catch(e=>{s.textContent='Erreur: '+e.name+': '+e.message;s.style.color='#f85149';});
 }
 fetch('/api/version').then(r=>r.json()).then(d=>{
   document.getElementById('curVer').textContent=d.version;});
