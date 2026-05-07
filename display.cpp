@@ -247,6 +247,60 @@ static int16_t fontCharAdvance(const GFXfont* f, char c) {
   return (int16_t)pgm_read_byte(&((GFXglyph*)pgm_read_ptr(&f->glyph))[idx].xAdvance);
 }
 
+// 4-bit alpha blend of fg over bg in RGB565. a in [0..15]: 0=bg, 15=fg.
+static inline uint16_t blend565(uint16_t fg, uint16_t bg, uint8_t a) {
+  if (a == 0)  return bg;
+  if (a >= 15) return fg;
+  uint8_t fr = (fg >> 11) & 0x1F;
+  uint8_t fG = (fg >> 5)  & 0x3F;
+  uint8_t fb =  fg        & 0x1F;
+  uint8_t br = (bg >> 11) & 0x1F;
+  uint8_t bG = (bg >> 5)  & 0x3F;
+  uint8_t bb =  bg        & 0x1F;
+  uint8_t inv = 15 - a;
+  uint8_t r = (uint8_t)((fr * a + br * inv) / 15);
+  uint8_t g = (uint8_t)((fG * a + bG * inv) / 15);
+  uint8_t b = (uint8_t)((fb * a + bb * inv) / 15);
+  return (uint16_t)((r << 11) | (g << 5) | b);
+}
+
+// Draw a 4bpp grayscale glyph onto a GFXcanvas16 with alpha blending against
+// whatever pixels are already in the canvas. (cursorX, cursorY) match
+// Adafruit_GFX print() semantics: cursorX is left edge of the cell, cursorY
+// is the baseline. The GFXfont struct layout is unchanged -- only the bitmap
+// data is interpreted as 4bpp (two pixels per byte, high nibble first).
+static void drawCharAA(GFXcanvas16& cv, const GFXfont* f, char c,
+                       int16_t cursorX, int16_t cursorY, uint16_t color) {
+  uint8_t first = pgm_read_byte(&f->first);
+  uint8_t last  = pgm_read_byte(&f->last);
+  if ((uint8_t)c < first || (uint8_t)c > last) return;
+  GFXglyph* glyphs = (GFXglyph*)pgm_read_ptr(&f->glyph);
+  GFXglyph* g = &glyphs[(uint8_t)c - first];
+  uint8_t* bitmap = (uint8_t*)pgm_read_ptr(&f->bitmap);
+
+  uint16_t bo = pgm_read_word(&g->bitmapOffset);
+  uint8_t  w  = pgm_read_byte(&g->width);
+  uint8_t  h  = pgm_read_byte(&g->height);
+  int8_t   xo = pgm_read_byte(&g->xOffset);
+  int8_t   yo = pgm_read_byte(&g->yOffset);
+
+  int16_t  cw  = cv.width();
+  int16_t  ch  = cv.height();
+  uint16_t* fb = cv.getBuffer();
+
+  uint32_t total = (uint32_t)w * h;
+  for (uint32_t i = 0; i < total; i++) {
+    uint8_t byte = pgm_read_byte(&bitmap[bo + (i >> 1)]);
+    uint8_t a    = (i & 1) ? (byte & 0x0F) : (byte >> 4);
+    if (a == 0) continue;
+    int16_t px = cursorX + xo + (int16_t)(i % w);
+    int16_t py = cursorY + yo + (int16_t)(i / w);
+    if ((uint16_t)px >= (uint16_t)cw || (uint16_t)py >= (uint16_t)ch) continue;
+    uint16_t bg = fb[(uint32_t)py * cw + px];
+    fb[(uint32_t)py * cw + px] = blend565(color, bg, a);
+  }
+}
+
 void display_showClock() {
   struct tm ti;
   time_t now = time(nullptr);
@@ -379,12 +433,10 @@ void display_showClock() {
     (int16_t)(3 * digitCellW + colonCellW),
   };
 
-  // Draw dim "8" background for all digit cells
-  cv.setTextColor(s_curDim);
+  // Draw dim "8" background for all digit cells (anti-aliased)
   for (int i = 0; i < 4; i++) {
     int ci = (i < 2) ? i : i + 1;
-    cv.setCursor(cellX[ci], textY);
-    cv.print("8");
+    drawCharAA(cv, fnt, '8', cellX[ci], textY, s_curDim);
   }
 
   // Draw dim colon as two circles (centered vertically, more spacing)
@@ -397,16 +449,13 @@ void display_showClock() {
     cv.fillCircle(colonMidX, colonMidY + dotGap, dotR, s_curDim);
   }
 
-  // Overdraw bright digits, right-aligned in their cells
-  cv.setTextColor(s_curFg);
+  // Overdraw bright digits, right-aligned in their cells (anti-aliased)
   for (int i = 0; i < 4; i++) {
     if (d[i] == ' ') continue;   // skip blank leading digit
     int ci = (i < 2) ? i : i + 1;
     int16_t charAdv = fontCharAdvance(fnt, d[i]);
     int16_t xOff = digitCellW - charAdv;
-    char s[2] = { d[i], '\0' };
-    cv.setCursor(cellX[ci] + xOff, textY);
-    cv.print(s);
+    drawCharAA(cv, fnt, d[i], cellX[ci] + xOff, textY, s_curFg);
   }
 
   // Overdraw bright colon if on
@@ -436,31 +485,37 @@ void display_showClock() {
     sc.getTextBounds("8", 0, 0, &bx, &by, &bw, &bh);
     int16_t textY = -by + 2;
 
-    // Draw dim "88" background
-    sc.setTextColor(s_curDim);
-    sc.setCursor(0, textY);
-    sc.print("88");
+    // Draw dim "88" background (anti-aliased)
+    drawCharAA(sc, fnt2, '8', 0,            textY, s_curDim);
+    drawCharAA(sc, fnt2, '8', digitCellW,   textY, s_curDim);
 
-    // Draw bright seconds digits, right-aligned in cells
-    sc.setTextColor(s_curFg);
+    // Draw bright seconds digits, right-aligned in cells (anti-aliased)
     char secBuf[3];
     snprintf(secBuf, sizeof(secBuf), "%02d", ti.tm_sec);
     for (int i = 0; i < 2; i++) {
       int16_t charAdv = fontCharAdvance(fnt2, secBuf[i]);
       int16_t xOff = digitCellW - charAdv;
-      char s[2] = { secBuf[i], '\0' };
-      sc.setCursor(i * digitCellW + xOff, textY);
-      sc.print(s);
+      drawCharAA(sc, fnt2, secBuf[i], i * digitCellW + xOff, textY, s_curFg);
     }
 
-    // Blit at half scale to TFT (nearest-neighbor 2:1 downscale)
+    // Blit at half scale to TFT (2x2 box-average for smoother downscale)
     int16_t halfW = s_secFullW / 2;
     int16_t halfH = s_secFullH / 2;
     uint16_t* buf = sc.getBuffer();
     for (int16_t y = 0; y < halfH; y++) {
       for (int16_t x = 0; x < halfW; x++) {
-        uint16_t px = buf[(y * 2) * s_secFullW + (x * 2)];
-        tft.drawPixel(s_secDispX + x, s_secDispY + y, px);
+        uint16_t p0 = buf[(y * 2)     * s_secFullW + (x * 2)];
+        uint16_t p1 = buf[(y * 2)     * s_secFullW + (x * 2 + 1)];
+        uint16_t p2 = buf[(y * 2 + 1) * s_secFullW + (x * 2)];
+        uint16_t p3 = buf[(y * 2 + 1) * s_secFullW + (x * 2 + 1)];
+        uint16_t r = (((p0 >> 11) & 0x1F) + ((p1 >> 11) & 0x1F)
+                    + ((p2 >> 11) & 0x1F) + ((p3 >> 11) & 0x1F)) >> 2;
+        uint16_t g = (((p0 >>  5) & 0x3F) + ((p1 >>  5) & 0x3F)
+                    + ((p2 >>  5) & 0x3F) + ((p3 >>  5) & 0x3F)) >> 2;
+        uint16_t b = ((p0 & 0x1F) + (p1 & 0x1F)
+                    + (p2 & 0x1F) + (p3 & 0x1F)) >> 2;
+        tft.drawPixel(s_secDispX + x, s_secDispY + y,
+                      (r << 11) | (g << 5) | b);
       }
     }
     s_lastSec = ti.tm_sec;
