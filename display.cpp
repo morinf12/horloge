@@ -361,9 +361,15 @@ void display_showClock() {
     cv.print("8");
   }
 
-  // Draw dim colon background
-  cv.setCursor(cellX[2], textY);
-  cv.print(":");
+  // Draw dim colon as two circles (centered vertically, more spacing)
+  {
+    int16_t colonMidX = cellX[2] + colonCellW / 2;
+    int16_t colonMidY = (int16_t)(bh / 2) + 2; // vertical center of canvas
+    int16_t dotR = 6;
+    int16_t dotGap = 22; // distance from center to each dot
+    cv.fillCircle(colonMidX, colonMidY - dotGap, dotR, s_curDim);
+    cv.fillCircle(colonMidX, colonMidY + dotGap, dotR, s_curDim);
+  }
 
   // Overdraw bright digits, right-aligned in their cells
   cv.setTextColor(s_curFg);
@@ -379,8 +385,12 @@ void display_showClock() {
 
   // Overdraw bright colon if on
   if (colonOn) {
-    cv.setCursor(cellX[2], textY);
-    cv.print(":");
+    int16_t colonMidX = cellX[2] + colonCellW / 2;
+    int16_t colonMidY = (int16_t)(bh / 2) + 2;
+    int16_t dotR = 6;
+    int16_t dotGap = 22;
+    cv.fillCircle(colonMidX, colonMidY - dotGap, dotR, s_curFg);
+    cv.fillCircle(colonMidX, colonMidY + dotGap, dotR, s_curFg);
   }
 
   // Push canvas to display in one shot
