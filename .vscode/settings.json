@@ -1,0 +1,10 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "git tag": true,
+        ".\\release.ps1": true,
+        "/^powershell -ExecutionPolicy Bypass -File \\.\\\\release\\.ps1 -Version v1\\.5\\.0 -Notes \"reformat OTA page\"$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
+    }
+}

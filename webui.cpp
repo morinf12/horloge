@@ -626,31 +626,66 @@ polling = setInterval(refresh, 500);
 
 // ---------------- OTA upload page --------------------------------------------
 static const char OTA_HTML[] PROGMEM = R"HTML(
-<!doctype html><meta charset="utf-8"><title>Mise &#224; jour OTA</title>
-<style>body{font-family:system-ui;background:#0e1726;color:#e6edf3;padding:24px}
-input,button{padding:10px;font-size:15px}
-button{background:#1f6feb;color:white;border:0;border-radius:6px;cursor:pointer}
-.bar{height:14px;background:#243049;border-radius:7px;overflow:hidden;margin-top:14px}
-.bar>div{height:100%;background:#7ee787;width:0%}
-#upd{margin:18px 0;padding:14px;background:#161b22;border-radius:8px;border:1px solid #30363d}</style>
-<h2>Mise &#224; jour firmware</h2>
-
-<div id="upd">
-  <button onclick="checkUpdate()">V&#233;rifier les mises &#224; jour</button>
-  <span id="curVer" style="display:none"></span>
-  <div id="updStatus" style="margin-top:10px;color:#9fb3d1"></div>
-</div>
-
-<p>S&#233;lectionnez un fichier <code>.bin</code> compil&#233; et envoyez-le.</p>
-<form id="f" enctype="multipart/form-data" method="POST" action="/update">
-  <label style="display:inline-block;padding:10px;background:#1f6feb;color:white;border-radius:6px;cursor:pointer;font-size:15px;margin-bottom:8px">Choisir un fichier<input type="file" name="firmware" accept=".bin" required style="display:none" onchange="document.getElementById('fn').textContent=this.files[0]?.name||'Aucun fichier'"></label>
-  <span id="fn" style="margin-left:8px;color:#9fb3d1">Aucun fichier</span><br>
-  <button type="submit">Envoyer</button>
-</form>
-<div class="bar"><div id="p"></div></div>
-<pre id="log"></pre>
-<p><a style="color:#7ee787" href="/">&laquo; retour</a></p>
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mise &agrave; jour firmware</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+         background:#0e1726; color:#e6edf3; }
+  header { background:#1f6feb; padding:14px 18px; font-size:20px; font-weight:600;
+           letter-spacing:.5px; }
+  main { max-width: 520px; margin:0 auto; padding:16px; }
+  .card { background:#161f33; border:1px solid #243049; border-radius:10px;
+          padding:16px; margin-bottom:14px; }
+  h2 { margin:0 0 12px 0; font-size:16px; color:#9fb3d1; font-weight:600;
+       text-transform:uppercase; letter-spacing:1px; }
+  input[type=file] { display:none; }
+  .filebtn { display:block; width:100%; padding:10px; border-radius:6px;
+             border:1px solid #2c3a5a; background:#0e1726; color:#e6edf3;
+             font-size:15px; box-sizing:border-box; margin:6px 0;
+             cursor:pointer; text-align:center; }
+  button { width:100%; padding:10px; border-radius:8px; border:1px solid #2c3a5a;
+           background:#0e1726; color:#e6edf3; font-size:15px; cursor:pointer; margin:6px 0; }
+  button.primary { background:#1f6feb; border-color:#1f6feb; color:white; font-weight:600; }
+  button.upload { background:#c85000; border-color:#c85000; color:white; font-weight:600; }
+  .bar { height:14px; background:#243049; border-radius:7px; overflow:hidden; margin-top:14px; }
+  .bar>div { height:100%; background:#7ee787; width:0%; transition:width 0.2s; }
+  pre { color:#9fb3d1; white-space:pre-wrap; word-break:break-word; }
+  a { color:#7ee787; }
+  footer { font-size:12px; color:#7280a0; text-align:center; padding:12px; }
+</style>
+</head>
+<body>
+<header>Mise &agrave; jour firmware</header>
+<main>
+  <section class="card">
+    <h2>V&eacute;rifier les mises &agrave; jour</h2>
+    <button class="primary" type="button" onclick="checkUpdate()">V&eacute;rifier sur GitHub</button>
+    <span id="curVer" style="display:none"></span>
+    <div id="updStatus" style="margin-top:10px;color:#9fb3d1;font-size:14px"></div>
+  </section>
+  <section class="card">
+    <h2>T&eacute;l&eacute;verser le firmware</h2>
+    <p style="color:#9fb3d1;font-size:13px;margin:0 0 8px 0">S&eacute;lectionnez un fichier <code>.bin</code> compil&eacute; et envoyez-le.</p>
+    <form id="f" enctype="multipart/form-data" method="POST" action="/update">
+      <input type="file" id="fw" name="firmware" accept=".bin" required>
+      <label class="filebtn" for="fw" id="fl">Choisir un fichier</label>
+      <button class="upload" type="submit">Envoyer le firmware</button>
+    </form>
+    <div class="bar"><div id="p"></div></div>
+    <pre id="log"></pre>
+  </section>
+  <p><a href="/">&laquo; retour</a></p>
+</main>
 <script>
+document.getElementById('fw').addEventListener('change',function(){
+  document.getElementById('fl').textContent=this.files[0]?this.files[0].name:'Choisir un fichier';
+});
 function checkUpdate(){
   const s=document.getElementById('updStatus');
   s.textContent='V\u00e9rification...';
@@ -696,6 +731,8 @@ f.addEventListener('submit',e=>{
   x.open('POST','/update'); x.send(fd);
 });
 </script>
+</body>
+</html>
 )HTML";
 
 // ---------------- Handlers ----------------------------------------------------
