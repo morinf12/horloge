@@ -28,6 +28,17 @@ void display_begin() {
 
   s_spi.begin(TFT_SCLK_PIN, -1, TFT_MOSI_PIN, TFT_CS_PIN);
 
+  // Full hardware reset of the ST7789 controller. The MCU may have rebooted
+  // (watchdog, software restart) while the panel kept its state, leaving GRAM
+  // and registers in an inconsistent state. Pulsing the RST line clears that.
+  pinMode(TFT_RST_PIN, OUTPUT);
+  digitalWrite(TFT_RST_PIN, HIGH);
+  delay(5);
+  digitalWrite(TFT_RST_PIN, LOW);
+  delay(20);                          // datasheet: tRW >= 10us, recommend >=10ms
+  digitalWrite(TFT_RST_PIN, HIGH);
+  delay(150);                         // datasheet: wait >=120ms after reset
+
   tft.init(TFT_WIDTH, TFT_HEIGHT);   // 240x280
   tft.setRotation(3);                // landscape 280x240
   tft.fillScreen(ST77XX_BLACK);
@@ -56,6 +67,7 @@ void display_showIP(const char* ip) {
 
 // ---- 7-segment clock (landscape 280x240, TTF font) -------------------------
 #include "DSEG7_80.h"
+#include "DSEG7_80_Italic.h"
 
 // Rotation 3 â†’ 280 wide Ã— 240 tall
 static const int LAND_W = 280;
@@ -82,6 +94,12 @@ static bool    s_rainbow         = false; // rainbow color cycling
 static uint8_t s_rainbowHue      = 0;     // current hue 0-255
 static bool    s_ecoMode         = false; // power saving mode
 static uint8_t s_dimLevel        = 25;    // dim digit intensity % (1-100)
+static bool    s_italic          = false; // use italic DSEG7 variant
+
+// Pointer to the currently active large clock font
+static inline const GFXfont* clockFont() {
+  return s_italic ? &DSEG7_80_Italic : &DSEG7_80;
+}
 static bool    s_showSeconds     = true;  // show seconds display
 static bool    s_showWeather     = true;  // show weather temperature
 static bool    s_displaySleeping = false; // TFT in sleep mode
@@ -137,6 +155,12 @@ bool     display_getShowIcons(){ return s_showIcons; }
 void     display_setShowIcons(bool show) { s_showIcons = show; }
 bool     display_getRainbow() { return s_rainbow; }
 void     display_setRainbow(bool on) { s_rainbow = on; }
+bool     display_getItalic() { return s_italic; }
+void     display_setItalic(bool on) {
+  if (on == s_italic) return;
+  s_italic = on;
+  display_resetClock();   // force re-layout (italic has different metrics)
+}
 bool     display_getEcoMode() { return s_ecoMode; }
 void     display_setEcoMode(bool on) { s_ecoMode = on; }
 uint8_t  display_getDimLevel() { return s_dimLevel; }
@@ -288,11 +312,12 @@ void display_showClock() {
   // First-time init: compute layout, allocate canvas
   if (!s_clockInited) {
     tft.fillScreen(ST77XX_BLACK);
-    tft.setFont(&DSEG7_80);
+    const GFXfont* fnt = clockFont();
+    tft.setFont(fnt);
     tft.setTextSize(1);
 
-    int16_t digitCellW = fontCharAdvance(&DSEG7_80, '8');
-    int16_t colonCellW = fontCharAdvance(&DSEG7_80, ':');
+    int16_t digitCellW = fontCharAdvance(fnt, '8');
+    int16_t colonCellW = fontCharAdvance(fnt, ':');
     int16_t totalW = 4 * digitCellW + colonCellW;
 
     int16_t bx, by;
@@ -333,12 +358,13 @@ void display_showClock() {
 
   GFXcanvas16& cv = *s_clockCanvas;
   cv.fillScreen(ST77XX_BLACK);
-  cv.setFont(&DSEG7_80);
+  const GFXfont* fnt = clockFont();
+  cv.setFont(fnt);
   cv.setTextSize(1);
 
   // Layout within canvas (origin at 0,0)
-  int16_t digitCellW = fontCharAdvance(&DSEG7_80, '8');
-  int16_t colonCellW = fontCharAdvance(&DSEG7_80, ':');
+  int16_t digitCellW = fontCharAdvance(fnt, '8');
+  int16_t colonCellW = fontCharAdvance(fnt, ':');
 
   int16_t bx, by;
   uint16_t bw, bh;
@@ -376,7 +402,7 @@ void display_showClock() {
   for (int i = 0; i < 4; i++) {
     if (d[i] == ' ') continue;   // skip blank leading digit
     int ci = (i < 2) ? i : i + 1;
-    int16_t charAdv = fontCharAdvance(&DSEG7_80, d[i]);
+    int16_t charAdv = fontCharAdvance(fnt, d[i]);
     int16_t xOff = digitCellW - charAdv;
     char s[2] = { d[i], '\0' };
     cv.setCursor(cellX[ci] + xOff, textY);
@@ -400,10 +426,11 @@ void display_showClock() {
   if (s_showSeconds && validTime && s_secCanvas && (ti.tm_sec != s_lastSec || colorChanged || digitsChanged)) {
     GFXcanvas16& sc = *s_secCanvas;
     sc.fillScreen(ST77XX_BLACK);
-    sc.setFont(&DSEG7_80);
+    const GFXfont* fnt2 = clockFont();
+    sc.setFont(fnt2);
     sc.setTextSize(1);
 
-    int16_t digitCellW = fontCharAdvance(&DSEG7_80, '8');
+    int16_t digitCellW = fontCharAdvance(fnt2, '8');
     int16_t bx, by;
     uint16_t bw, bh;
     sc.getTextBounds("8", 0, 0, &bx, &by, &bw, &bh);
@@ -419,7 +446,7 @@ void display_showClock() {
     char secBuf[3];
     snprintf(secBuf, sizeof(secBuf), "%02d", ti.tm_sec);
     for (int i = 0; i < 2; i++) {
-      int16_t charAdv = fontCharAdvance(&DSEG7_80, secBuf[i]);
+      int16_t charAdv = fontCharAdvance(fnt2, secBuf[i]);
       int16_t xOff = digitCellW - charAdv;
       char s[2] = { secBuf[i], '\0' };
       sc.setCursor(i * digitCellW + xOff, textY);

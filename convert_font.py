@@ -1,16 +1,21 @@
 #!/usr/bin/env python3
 """Convert a TTF to an Adafruit GFX font header (.h) using freetype-py.
-Only includes characters 0x20 (space) through 0x3A (colon) for a clock display.
+Usage: convert_font.py <ttf> <size> <font_name> [first_char] [last_char]
+Char range defaults to 0x20..0x3A (space..colon). Pass hex (e.g. 0x30) or
+decimal to override. For digits + colon only, use 0x30 0x3A.
 """
 import sys
 import freetype
+
+def _parse_int(s):
+    return int(s, 0)  # accepts 0x.. / 0o.. / decimal
 
 def main():
     ttf_path = sys.argv[1]
     size = int(sys.argv[2])
     font_name = sys.argv[3]
-    first_char = 0x20
-    last_char = 0x3A
+    first_char = _parse_int(sys.argv[4]) if len(sys.argv) > 4 else 0x20
+    last_char  = _parse_int(sys.argv[5]) if len(sys.argv) > 5 else 0x3A
 
     face = freetype.Face(ttf_path)
     face.set_pixel_sizes(0, size)

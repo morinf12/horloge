@@ -27,8 +27,9 @@ static const char INDEX_HTML[] PROGMEM = R"HTML(
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Horloge</title>
 <style>
-  :root { color-scheme: dark; }
-  @font-face { font-family:'7seg'; src:url('/font.ttf') format('truetype'); }
+  :root { color-scheme: dark; --clock-font: '7seg'; }
+  @font-face { font-family:'7seg';   src:url('/font.ttf')        format('truetype'); }
+  @font-face { font-family:'7seg-i'; src:url('/font-italic.ttf') format('truetype'); }
   * { box-sizing: border-box; }
   body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
          background:#0e1726; color:#e6edf3; }
@@ -44,14 +45,14 @@ static const char INDEX_HTML[] PROGMEM = R"HTML(
            width:100%; }
   button.primary { background:#1f6feb; border-color:#1f6feb; color:white; }
   .time { text-align:center; padding:12px 0; display:flex; justify-content:center; align-items:baseline; gap:0; }
-  .time .d { font-family:'7seg',monospace; font-size:64px; display:inline-block;
+  .time .d { font-family:var(--clock-font),'7seg',monospace; font-size:64px; display:inline-block;
              width:0.75em; text-align:right; position:relative; color:transparent;
              --fg:#7ee787; --dim:rgba(126,231,135,0.15); }
   .time .d::before { content:'8'; position:absolute; top:0; right:0;
              color:var(--dim); pointer-events:none; }
   .time .d::after { content:attr(data-v); position:absolute; top:0; right:0;
              color:var(--fg); }
-  .time .colon { font-family:'7seg',monospace; font-size:64px; color:#7ee787; width:0.35em;
+  .time .colon { font-family:var(--clock-font),'7seg',monospace; font-size:64px; color:#7ee787; width:0.35em;
              text-align:center; display:inline-block; }
   .row { display:flex; align-items:center; gap:10px; margin:8px 0; }
   .row label { width:120px; color:#9fb3d1; flex-shrink:0; }
@@ -123,6 +124,10 @@ static const char INDEX_HTML[] PROGMEM = R"HTML(
     <div class="row">
       <label>Rotation 180&#176;</label>
       <input id="rot180" type="checkbox">
+    </div>
+    <div class="row">
+      <label>Italique</label>
+      <input id="italic" type="checkbox">
     </div>
     <button class="primary" onclick="saveDisplay()">Enregistrer</button>
   </section>
@@ -248,6 +253,8 @@ function loadDisplay() {
     document.getElementById('dimLvl').value = d.dim_lvl;
     document.getElementById('dimLvlV').textContent = d.dim_lvl;
     document.getElementById('rot180').checked = d.rot180;
+    document.getElementById('italic').checked = d.italic;
+    document.documentElement.style.setProperty('--clock-font', d.italic ? "'7seg-i'" : "'7seg'");
   }).catch(()=>{});
 }
 function saveDisplay() {
@@ -256,7 +263,9 @@ function saveDisplay() {
   const eco = document.getElementById('eco').checked ? 1 : 0;
   const dimLvl = document.getElementById('dimLvl').value;
   const rot180 = document.getElementById('rot180').checked ? 1 : 0;
-  fetch('/api/display?icons='+icons+'&rainbow='+rainbow+'&eco='+eco+'&dim_lvl='+dimLvl+'&rot180='+rot180).then(()=>{
+  const italic = document.getElementById('italic').checked ? 1 : 0;
+  fetch('/api/display?icons='+icons+'&rainbow='+rainbow+'&eco='+eco+'&dim_lvl='+dimLvl+'&rot180='+rot180+'&italic='+italic).then(()=>{
+    document.documentElement.style.setProperty('--clock-font', italic ? "'7seg-i'" : "'7seg'");
     alert('Enregistr\u00e9\u00a0!');
   });
 }
@@ -366,6 +375,12 @@ static const char WIFI_HTML[] PROGMEM = R"HTML(
     <button class="secondary" onclick="reset()">Oublier le Wi-Fi et red&#233;marrer en AP</button>
   </section>
 
+  <section class="card">
+    <h2>Red&#233;marrage</h2>
+    <button class="secondary" onclick="reboot()">Red&#233;marrer l'horloge</button>
+    <div id="rmsg"></div>
+  </section>
+
   <p><a href="/">&laquo; retour</a></p>
 </main>
 
@@ -429,6 +444,12 @@ async function reset() {
   if (!confirm('Oublier le Wi-Fi enregistr\u00e9 et red\u00e9marrer en mode AP\u00a0?')) return;
   await fetch('/api/wifi/reset', { method:'POST' });
   document.getElementById('msg').innerHTML = '<span class="ok">R\u00e9initialis\u00e9. Red\u00e9marrage en AP...</span>';
+}
+
+async function reboot() {
+  if (!confirm('Red\u00e9marrer l\'horloge maintenant\u00a0?')) return;
+  document.getElementById('rmsg').innerHTML = '<span class="ok">Red\u00e9marrage en cours...</span>';
+  try { await fetch('/api/reboot', { method:'POST' }); } catch(e){}
 }
 
 refresh();
@@ -752,6 +773,11 @@ static void hFont() {
   s_server.send_P(200, "font/ttf", (const char*)FONT_TTF, FONT_TTF_LEN);
 }
 
+static void hFontItalic() {
+  s_server.sendHeader("Cache-Control", "public, max-age=86400");
+  s_server.send_P(200, "font/ttf", (const char*)FONT_TTF_ITALIC, FONT_TTF_ITALIC_LEN);
+}
+
 static void hTime() {
   if (s_server.hasArg("epoch")) {
     time_t epoch = (time_t)s_server.arg("epoch").toInt();
@@ -831,6 +857,11 @@ static void hDisplay() {
     s_prefs.putBool("rot180", v);
     display_setRotation180(v);
   }
+  if (s_server.hasArg("italic")) {
+    bool v = s_server.arg("italic").toInt() != 0;
+    s_prefs.putBool("italic", v);
+    display_setItalic(v);
+  }
   if (s_server.hasArg("showSec")) {
     bool v = s_server.arg("showSec").toInt() != 0;
     s_prefs.putBool("showSec", v);
@@ -848,13 +879,15 @@ static void hDisplay() {
   bool rot180 = s_prefs.getBool("rot180", false);
   bool showSec = s_prefs.getBool("showSec", true);
   bool showWx = s_prefs.getBool("showWx", true);
+  bool italic = s_prefs.getBool("italic", false);
   String j = "{\"icons\":" + String(icons ? "true" : "false")
            + ",\"rainbow\":" + String(rainbow ? "true" : "false")
            + ",\"eco\":" + String(eco ? "true" : "false")
            + ",\"dim_lvl\":" + String(dimLvl)
            + ",\"rot180\":" + String(rot180 ? "true" : "false")
            + ",\"showSec\":" + String(showSec ? "true" : "false")
-           + ",\"showWx\":" + String(showWx ? "true" : "false") + "}";
+           + ",\"showWx\":" + String(showWx ? "true" : "false")
+           + ",\"italic\":" + String(italic ? "true" : "false") + "}";
   s_server.send(200, "application/json", j);
 }
 
@@ -951,6 +984,12 @@ static void hWifiSave() {
 static void hWifiReset() {
   s_prefs.remove("ssid");
   s_prefs.remove("pass");
+  s_server.send(200, "application/json", "{\"ok\":true}");
+  delay(500);
+  ESP.restart();
+}
+
+static void hReboot() {
   s_server.send(200, "application/json", "{\"ok\":true}");
   delay(500);
   ESP.restart();
@@ -1110,10 +1149,13 @@ void webui_begin() {
   display_setShowSeconds(showSec);
   bool showWx = s_prefs.getBool("showWx", true);
   display_setShowWeather(showWx);
+  bool italic = s_prefs.getBool("italic", false);
+  display_setItalic(italic);
 
   // Routes
   s_server.on("/",            HTTP_GET,  hRoot);
   s_server.on("/font.ttf",    HTTP_GET,  hFont);
+  s_server.on("/font-italic.ttf", HTTP_GET, hFontItalic);
   s_server.on("/api/version", HTTP_GET,  hVersion);
   s_server.on("/api/time",    HTTP_GET,  hTime);
   s_server.on("/api/schedule",HTTP_GET,  hSchedule);
@@ -1128,6 +1170,7 @@ void webui_begin() {
   s_server.on("/api/wifi/reset",  HTTP_POST, hWifiReset);
   s_server.on("/api/wifi/hostname", HTTP_GET,  hWifiHostname);
   s_server.on("/api/wifi/hostname", HTTP_POST, hWifiHostname);
+  s_server.on("/api/reboot",      HTTP_POST, hReboot);
 
   s_server.on("/debug",             HTTP_GET,  hDebugPage);
   s_server.on("/api/debug/state",   HTTP_GET,  hDebugState);

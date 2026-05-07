@@ -21,6 +21,8 @@ bool     display_getShowIcons();
 void     display_setShowIcons(bool show);
 bool     display_getRainbow();
 void     display_setRainbow(bool on);
+bool     display_getItalic();
+void     display_setItalic(bool on);
 bool     display_getEcoMode();
 void     display_setEcoMode(bool on);
 uint8_t  display_getDimLevel();
