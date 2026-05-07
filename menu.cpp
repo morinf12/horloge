@@ -4,10 +4,6 @@
 #include <Preferences.h>
 #include <Adafruit_ST7789.h>
 #include <WiFi.h>
-#include <WiFiClientSecure.h>
-#include <HTTPClient.h>
-#include <ArduinoJson.h>
-#include <Update.h>
 
 // ---- Layout constants --------------------------------------------------------
 static const int16_t MENU_X  = 10;
@@ -73,10 +69,9 @@ enum SubWifi : uint8_t {
   SW_HOSTNAME,
   SW_ACTIVER,
   SW_RESTART_AP,
-  SW_MAJ,
   SW_COUNT
 };
-static const char* s_wifiLabels[] = { "Status", "Adresse IP", "SSID", "Nom d'hote", "WiFi actif", "Redemarrer AP", "Mise a jour" };
+static const char* s_wifiLabels[] = { "Status", "Adresse IP", "SSID", "Nom d'hote", "WiFi actif", "Redemarrer AP" };
 
 // ---- Menu state --------------------------------------------------------------
 static bool     s_active   = false;
@@ -98,122 +93,6 @@ static uint8_t  s_dimLevel;
 static bool     s_rotation180;
 static bool     s_showSeconds;
 static bool     s_showWeather;
-
-// ---- OTA from GitHub --------------------------------------------------------
-static const char* s_majStatus = "";
-void menu_draw(); // forward declaration
-
-static void doOtaFromGitHub() {
-  if (WiFi.status() != WL_CONNECTED) {
-    s_majStatus = "Pas de WiFi";
-    return;
-  }
-  s_majStatus = "Verification...";
-  s_dirty = true;
-  menu_draw();
-
-  WiFiClientSecure client;
-  client.setInsecure();
-  HTTPClient http;
-
-  // 1. Check latest release
-  http.begin(client, "https://api.github.com/repos/morinf12/horloge/releases/latest");
-  http.addHeader("User-Agent", "ESP32-Horloge");
-  http.setTimeout(8000);
-  int code = http.GET();
-  if (code != 200) {
-    s_majStatus = "Erreur GitHub";
-    http.end();
-    return;
-  }
-  String payload = http.getString();
-  http.end();
-
-  JsonDocument doc;
-  if (deserializeJson(doc, payload)) {
-    s_majStatus = "Erreur JSON";
-    return;
-  }
-  const char* tag = doc["tag_name"];
-  if (!tag) { s_majStatus = "Pas de tag"; return; }
-
-  // Compare with current version
-  String current = String(FW_VERSION);
-  String latest  = String(tag);
-  if (current == latest) {
-    s_majStatus = "A jour!";
-    return;
-  }
-
-  // 2. Find .bin asset
-  const char* binUrl = nullptr;
-  JsonArray assets = doc["assets"];
-  for (JsonObject asset : assets) {
-    const char* name = asset["name"];
-    if (name && strstr(name, ".bin")) {
-      binUrl = asset["browser_download_url"];
-      break;
-    }
-  }
-  if (!binUrl) {
-    s_majStatus = "Pas de .bin";
-    return;
-  }
-
-  // 3. Download and flash
-  s_majStatus = "Telechargement...";
-  s_dirty = true;
-  menu_draw();
-
-  http.begin(client, binUrl);
-  http.addHeader("User-Agent", "ESP32-Horloge");
-  http.setTimeout(30000);
-  http.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS);
-  code = http.GET();
-  if (code != 200) {
-    s_majStatus = "DL erreur";
-    http.end();
-    return;
-  }
-
-  int contentLen = http.getSize();
-  if (contentLen <= 0) {
-    s_majStatus = "Taille inconnue";
-    http.end();
-    return;
-  }
-
-  if (!Update.begin(contentLen)) {
-    s_majStatus = "Flash erreur";
-    http.end();
-    return;
-  }
-
-  s_majStatus = "Installation...";
-  s_dirty = true;
-  menu_draw();
-
-  WiFiClient* stream = http.getStreamPtr();
-  size_t written = Update.writeStream(*stream);
-  http.end();
-
-  if (written != (size_t)contentLen) {
-    Update.abort();
-    s_majStatus = "Ecriture incomp.";
-    return;
-  }
-
-  if (!Update.end(true)) {
-    s_majStatus = "Finalisation err";
-    return;
-  }
-
-  s_majStatus = "OK! Redemarrage";
-  s_dirty = true;
-  menu_draw();
-  delay(1500);
-  ESP.restart();
-}
 
 // ---- Color helpers ----------------------------------------------------------
 static void rgb565_to_rgb(uint16_t c, uint8_t& r, uint8_t& g, uint8_t& b) {
@@ -444,8 +323,6 @@ static void adjustValue(int8_t dir) {
       WiFi.disconnect(true, true);
       WiFi.mode(WIFI_AP);
       WiFi.softAP(WIFI_AP_SSID, WIFI_AP_PASS, WIFI_AP_CHAN);
-    } else if (s_subCur == SW_MAJ) {
-      doOtaFromGitHub();
     }
   }
   s_dirty = true;
@@ -652,9 +529,6 @@ static void getItemValue(uint8_t idx, bool editing, char* buf) {
         return;
       case SW_RESTART_AP:
         strcpy(buf, "[Executer]");
-        return;
-      case SW_MAJ:
-        strcpy(buf, s_majStatus[0] ? s_majStatus : "[Verifier]");
         return;
     }
   }

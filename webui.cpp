@@ -6,9 +6,6 @@
 #include "battery.h"
 #include "weather.h"
 #include <WiFi.h>
-#include <WiFiClientSecure.h>
-#include <HTTPClient.h>
-#include <ArduinoJson.h>
 #include <ESPmDNS.h>
 #include <WebServer.h>
 #include <DNSServer.h>
@@ -640,7 +637,8 @@ button{background:#1f6feb;color:white;border:0;border-radius:6px;cursor:pointer}
 
 <div id="upd">
   <button onclick="checkUpdate()">V&#233;rifier les mises &#224; jour</button>
-  <span id="updStatus" style="margin-left:12px;color:#9fb3d1"></span>
+  <span id="curVer" style="display:none"></span>
+  <div id="updStatus" style="margin-top:10px;color:#9fb3d1"></div>
 </div>
 
 <p>S&#233;lectionnez un fichier <code>.bin</code> compil&#233; et envoyez-le.</p>
@@ -657,17 +655,48 @@ function checkUpdate(){
   const s=document.getElementById('updStatus');
   s.textContent='V\u00e9rification...';
   s.style.color='#9fb3d1';
-  fetch('/api/check_update').then(r=>r.json()).then(d=>{
-    if(d.error){ s.textContent='Erreur: '+d.error; s.style.color='#f85149'; return; }
-    s.innerHTML='Actuel: <b>'+d.current+'</b> | Dernier: <b>'+d.latest+'</b>';
-    if(d.current===d.latest || d.latest==='?'){
-      s.innerHTML+=' &#x2714; &#192; jour';s.style.color='#7ee787';
+  const cur=document.getElementById('curVer').textContent;
+  fetch('https://api.github.com/repos/morinf12/horloge/releases/latest')
+  .then(r=>{if(!r.ok)throw new Error('HTTP '+r.status);return r.json();})
+  .then(d=>{
+    const tag=d.tag_name||'?';
+    s.innerHTML='Actuel: <b>'+cur+'</b> | Dernier: <b>'+tag+'</b>';
+    if(cur===tag||tag==='?'){
+      s.innerHTML+=' &#x2714; \u00C0 jour';s.style.color='#7ee787';
     } else {
-      s.innerHTML+=' &#x26A0; <a href="'+d.url+'" target="_blank" style="color:#58a6ff">'+d.name+'</a> disponible';
+      s.innerHTML+=' &#x26A0; Mise \u00e0 jour disponible: <a href="'+d.html_url+'" target="_blank" style="color:#58a6ff">'+
+        (d.name||tag)+'</a>';
       s.style.color='#d29922';
+      // Find .bin asset for auto-install
+      const bin=d.assets&&d.assets.find(a=>a.name.endsWith('.bin'));
+      if(bin){
+        s.innerHTML+='<br><button onclick="installUpdate(\''+bin.browser_download_url+'\')"\
+ style="margin-top:8px;background:#238636">Installer automatiquement</button>';
+      }
     }
-  }).catch(()=>{ s.textContent='Erreur r\u00e9seau'; s.style.color='#f85149'; });
+  }).catch(e=>{s.textContent='Erreur: '+e.message;s.style.color='#f85149';});
 }
+function installUpdate(url){
+  const s=document.getElementById('updStatus');
+  const p=document.getElementById('p');
+  s.textContent='T\u00e9l\u00e9chargement du firmware...';s.style.color='#9fb3d1';
+  fetch(url).then(r=>{if(!r.ok)throw new Error('DL err '+r.status);return r.blob();})
+  .then(blob=>{
+    s.textContent='Envoi au ESP32...';
+    const fd=new FormData();
+    fd.append('firmware',blob,'firmware.bin');
+    const x=new XMLHttpRequest();
+    x.upload.onprogress=ev=>{if(ev.lengthComputable){
+      p.style.width=(ev.loaded/ev.total*100).toFixed(1)+'%';}};
+    x.onload=()=>{
+      if(x.status===200){s.textContent='OK! Red\u00e9marrage...';s.style.color='#7ee787';}
+      else{s.textContent='Erreur flash: '+x.responseText;s.style.color='#f85149';}};
+    x.onerror=()=>{s.textContent='Erreur envoi';s.style.color='#f85149';};
+    x.open('POST','/update');x.send(fd);
+  }).catch(e=>{s.textContent='Erreur: '+e.message;s.style.color='#f85149';});
+}
+fetch('/api/version').then(r=>r.json()).then(d=>{
+  document.getElementById('curVer').textContent=d.version;});
 const f=document.getElementById('f'),p=document.getElementById('p'),l=document.getElementById('log');
 f.addEventListener('submit',e=>{
   e.preventDefault();
@@ -692,43 +721,6 @@ static void hVersion() {
            + ",\"batt_v\":" + String(battery_voltage(), 2)
            + ",\"batt_pct\":" + String(battery_percent()) + "}";
   s_server.send(200, "application/json", j);
-}
-
-static void hCheckUpdate() {
-  if (WiFi.status() != WL_CONNECTED) {
-    s_server.send(200, "application/json",
-      "{\"error\":\"WiFi non connect\\u00e9\"}");
-    return;
-  }
-  WiFiClientSecure client;
-  client.setInsecure(); // skip cert verification (hobby project)
-  HTTPClient http;
-  http.begin(client, "https://api.github.com/repos/morinf12/horloge/releases/latest");
-  http.addHeader("User-Agent", "ESP32-Horloge");
-  http.setTimeout(8000);
-  int code = http.GET();
-  if (code != 200) {
-    String err = "{\"error\":\"HTTP " + String(code) + "\"}";
-    s_server.send(200, "application/json", err);
-    http.end();
-    return;
-  }
-  String payload = http.getString();
-  http.end();
-
-  JsonDocument doc;
-  if (deserializeJson(doc, payload)) {
-    s_server.send(200, "application/json", "{\"error\":\"JSON parse\"}");
-    return;
-  }
-  const char* tag  = doc["tag_name"];
-  const char* name = doc["name"];
-  const char* url  = doc["html_url"];
-  String resp = "{\"current\":\"" + String(FW_VERSION) + "\""
-              + ",\"latest\":\"" + String(tag ? tag : "?") + "\""
-              + ",\"name\":\"" + String(name ? name : "") + "\""
-              + ",\"url\":\"" + String(url ? url : "") + "\"}";
-  s_server.send(200, "application/json", resp);
 }
 
 static void hFont() {
@@ -1099,7 +1091,6 @@ void webui_begin() {
   s_server.on("/",            HTTP_GET,  hRoot);
   s_server.on("/font.ttf",    HTTP_GET,  hFont);
   s_server.on("/api/version", HTTP_GET,  hVersion);
-  s_server.on("/api/check_update", HTTP_GET, hCheckUpdate);
   s_server.on("/api/time",    HTTP_GET,  hTime);
   s_server.on("/api/schedule",HTTP_GET,  hSchedule);
   s_server.on("/api/display", HTTP_GET,  hDisplay);
