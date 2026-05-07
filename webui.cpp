@@ -655,29 +655,34 @@ function checkUpdate(){
   const s=document.getElementById('updStatus');
   s.textContent='V\u00e9rification...';
   s.style.color='#9fb3d1';
-  const cur=document.getElementById('curVer').textContent;
+  const curRelease=document.getElementById('curVer').dataset.release||'';
+  const curBuild=document.getElementById('curVer').textContent;
   fetch('https://api.github.com/repos/morinf12/horloge/releases/latest')
   .then(r=>{if(!r.ok)throw new Error('HTTP '+r.status);return r.json();})
   .then(d=>{
     const tag=d.tag_name||'?';
-    s.innerHTML='Actuel: <b>'+cur+'</b> | Dernier: <b>'+tag+'</b>';
-    if(cur===tag||tag==='?'){
-      s.innerHTML+=' &#x2714; \u00C0 jour';s.style.color='#7ee787';
+    const isUpToDate=(curRelease===tag);
+    s.innerHTML='<b>Install\u00e9:</b> '+curRelease+' ('+curBuild+')<br><b>Disponible:</b> '+tag;
+    if(isUpToDate){
+      s.innerHTML+='<br><span style="color:#7ee787;font-size:16px">&#x2714; Votre firmware est \u00e0 jour</span>';
+      s.style.color='#7ee787';
     } else {
-      s.innerHTML+=' &#x26A0; Mise \u00e0 jour disponible: <a href="'+d.html_url+'" target="_blank" style="color:#58a6ff">'+
-        (d.name||tag)+'</a>';
+      s.innerHTML+='<br><span style="color:#f0883e;font-size:16px;font-weight:bold">&#x26A0; Une nouvelle version est disponible!</span>';
+      s.innerHTML+='<br><a href="'+d.html_url+'" target="_blank" style="color:#58a6ff">Notes de version</a>';
       s.style.color='#d29922';
-      // Find .bin asset for direct download link
       const bin=d.assets&&d.assets.find(a=>a.name.endsWith('.bin'));
       if(bin){
-        s.innerHTML+='<br><a href="'+bin.browser_download_url+'" style="display:inline-block;margin-top:8px;padding:10px 16px;background:#238636;color:white;border-radius:6px;text-decoration:none">T\u00e9l\u00e9charger firmware.bin</a>';
+        s.innerHTML+='<br><a href="'+bin.browser_download_url+'" style="display:inline-block;margin-top:8px;padding:10px 16px;background:#238636;color:white;border-radius:6px;text-decoration:none;font-weight:bold">&#x2B07; T\u00e9l\u00e9charger '+tag+'</a>';
         s.innerHTML+='<br><small style="color:#9fb3d1">Puis utilisez le formulaire ci-dessous pour l\'envoyer</small>';
       }
     }
   }).catch(e=>{s.textContent='Erreur: '+e.name+': '+e.message;s.style.color='#f85149';});
 }
 fetch('/api/version').then(r=>r.json()).then(d=>{
-  document.getElementById('curVer').textContent=d.version;});
+  const el=document.getElementById('curVer');
+  el.textContent=d.version;
+  el.dataset.release=d.release||'';
+});
 const f=document.getElementById('f'),p=document.getElementById('p'),l=document.getElementById('log');
 f.addEventListener('submit',e=>{
   e.preventDefault();
@@ -699,6 +704,7 @@ static void hOtaPage() { s_server.send_P(200, "text/html", OTA_HTML); }
 
 static void hVersion() {
   String j = "{\"version\":\"" + String(FW_VERSION) + "\""
+           + ",\"release\":\"" + String(FW_RELEASE) + "\""
            + ",\"batt_v\":" + String(battery_voltage(), 2)
            + ",\"batt_pct\":" + String(battery_percent()) + "}";
   s_server.send(200, "application/json", j);

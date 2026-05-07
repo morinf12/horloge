@@ -1,6 +1,7 @@
 import datetime
 import json
 import os
+import subprocess
 
 Import("env")
 
@@ -25,8 +26,20 @@ with open(TRACK_FILE, "w") as f:
     json.dump({"date": today, "num": build_num}, f)
 
 version = f"V{today}.{build_num:02d}"
-print(f"  Build version: {version}")
+
+# Get latest git tag for release version
+try:
+    git_tag = subprocess.check_output(
+        ["git", "describe", "--tags", "--abbrev=0"],
+        cwd=env.subst("$PROJECT_DIR"),
+        stderr=subprocess.DEVNULL
+    ).decode().strip()
+except Exception:
+    git_tag = "unknown"
+
+print(f"  Build version: {version} (release: {git_tag})")
 
 env.Append(CPPDEFINES=[
-    ("FW_VERSION", env.StringifyMacro(version))
+    ("FW_VERSION", env.StringifyMacro(version)),
+    ("FW_RELEASE", env.StringifyMacro(git_tag))
 ])
