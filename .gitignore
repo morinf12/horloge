@@ -74,3 +74,5 @@ Testing/
 .vscode/launch.json
 .vscode/ipch
 .build_number
+dseg_fonts.zip
+dseg_extract/*

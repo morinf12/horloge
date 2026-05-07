@@ -1,4 +1,4 @@
-#include "display.h"
+﻿#include "display.h"
 #include "config.h"
 #include <SPI.h>
 #include <Adafruit_GFX.h>
@@ -55,9 +55,9 @@ void display_showIP(const char* ip) {
 }
 
 // ---- 7-segment clock (landscape 280x240, TTF font) -------------------------
-#include "SevenSeg128.h"
+#include "DSEG7_80.h"
 
-// Rotation 3 → 280 wide × 240 tall
+// Rotation 3 â†’ 280 wide Ã— 240 tall
 static const int LAND_W = 280;
 static const int LAND_H = 240;
 
@@ -209,10 +209,10 @@ static void applyBacklight(uint8_t pct) {
 static bool isNightTime(int hour, int minute) {
   uint16_t now = (uint16_t)(hour * 60 + minute);
   if (s_nightMin > s_dayMin) {
-    // e.g. day=8:00, night=22:00 → night is [22:00..8:00)
+    // e.g. day=8:00, night=22:00 â†’ night is [22:00..8:00)
     return (now >= s_nightMin || now < s_dayMin);
   } else {
-    // e.g. day=22:00, night=8:00 → night is [8:00..22:00)
+    // e.g. day=22:00, night=8:00 â†’ night is [8:00..22:00)
     return (now >= s_nightMin && now < s_dayMin);
   }
 }
@@ -288,11 +288,11 @@ void display_showClock() {
   // First-time init: compute layout, allocate canvas
   if (!s_clockInited) {
     tft.fillScreen(ST77XX_BLACK);
-    tft.setFont(&SevenSeg128);
+    tft.setFont(&DSEG7_80);
     tft.setTextSize(1);
 
-    int16_t digitCellW = fontCharAdvance(&SevenSeg128, '8');
-    int16_t colonCellW = fontCharAdvance(&SevenSeg128, ':');
+    int16_t digitCellW = fontCharAdvance(&DSEG7_80, '8');
+    int16_t colonCellW = fontCharAdvance(&DSEG7_80, ':');
     int16_t totalW = 4 * digitCellW + colonCellW;
 
     int16_t bx, by;
@@ -309,7 +309,7 @@ void display_showClock() {
     if (s_clockCanvas) delete s_clockCanvas;
     s_clockCanvas = new GFXcanvas16(cvW, cvH);
 
-    // Seconds canvas: 2 digits at full SevenSeg128 size, will be displayed at half scale
+    // Seconds canvas: 2 digits at full DSEG7_80 size, will be displayed at half scale
     s_secFullW = 2 * digitCellW;
     s_secFullH = (int16_t)bh + 4;
     if (s_secCanvas) delete s_secCanvas;
@@ -333,12 +333,12 @@ void display_showClock() {
 
   GFXcanvas16& cv = *s_clockCanvas;
   cv.fillScreen(ST77XX_BLACK);
-  cv.setFont(&SevenSeg128);
+  cv.setFont(&DSEG7_80);
   cv.setTextSize(1);
 
   // Layout within canvas (origin at 0,0)
-  int16_t digitCellW = fontCharAdvance(&SevenSeg128, '8');
-  int16_t colonCellW = fontCharAdvance(&SevenSeg128, ':');
+  int16_t digitCellW = fontCharAdvance(&DSEG7_80, '8');
+  int16_t colonCellW = fontCharAdvance(&DSEG7_80, ':');
 
   int16_t bx, by;
   uint16_t bw, bh;
@@ -376,7 +376,7 @@ void display_showClock() {
   for (int i = 0; i < 4; i++) {
     if (d[i] == ' ') continue;   // skip blank leading digit
     int ci = (i < 2) ? i : i + 1;
-    int16_t charAdv = fontCharAdvance(&SevenSeg128, d[i]);
+    int16_t charAdv = fontCharAdvance(&DSEG7_80, d[i]);
     int16_t xOff = digitCellW - charAdv;
     char s[2] = { d[i], '\0' };
     cv.setCursor(cellX[ci] + xOff, textY);
@@ -396,14 +396,14 @@ void display_showClock() {
   // Push canvas to display in one shot
   tft.drawRGBBitmap(s_canvasX, s_canvasY, cv.getBuffer(), cv.width(), cv.height());
 
-  // Draw seconds below the clock using SevenSeg128 at half scale, right-aligned
+  // Draw seconds below the clock using DSEG7_80 at half scale, right-aligned
   if (s_showSeconds && validTime && s_secCanvas && (ti.tm_sec != s_lastSec || colorChanged || digitsChanged)) {
     GFXcanvas16& sc = *s_secCanvas;
     sc.fillScreen(ST77XX_BLACK);
-    sc.setFont(&SevenSeg128);
+    sc.setFont(&DSEG7_80);
     sc.setTextSize(1);
 
-    int16_t digitCellW = fontCharAdvance(&SevenSeg128, '8');
+    int16_t digitCellW = fontCharAdvance(&DSEG7_80, '8');
     int16_t bx, by;
     uint16_t bw, bh;
     sc.getTextBounds("8", 0, 0, &bx, &by, &bw, &bh);
@@ -419,7 +419,7 @@ void display_showClock() {
     char secBuf[3];
     snprintf(secBuf, sizeof(secBuf), "%02d", ti.tm_sec);
     for (int i = 0; i < 2; i++) {
-      int16_t charAdv = fontCharAdvance(&SevenSeg128, secBuf[i]);
+      int16_t charAdv = fontCharAdvance(&DSEG7_80, secBuf[i]);
       int16_t xOff = digitCellW - charAdv;
       char s[2] = { secBuf[i], '\0' };
       sc.setCursor(i * digitCellW + xOff, textY);
@@ -442,7 +442,7 @@ void display_showClock() {
   // Draw sun (day) or moon (night) icon when state changes
   int8_t nightState = night ? 1 : 0;
   if (s_showIcons && nightState != s_lastNight) {
-    // Icon geometry — 90px diameter
+    // Icon geometry â€” 90px diameter
     const int16_t iconR   = 45;   // main circle radius
     const int16_t iconY   = LAND_H - 50;
     const int16_t iconX   = 55;
