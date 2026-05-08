@@ -57,7 +57,13 @@ void loop() {
     if (display_getEcoMode()) {
       display_sleep(false);
     }
-    menu_handleButton(btn);
+    // Outside the menu: UP toggles a manual day/night override that
+    // lasts until the next scheduled transition.
+    if (!menu_isActive() && btn == BTN_UP) {
+      display_toggleNightOverride();
+    } else {
+      menu_handleButton(btn);
+    }
   }
 
   if (menu_isActive()) {

@@ -92,9 +92,19 @@ static int8_t  s_lastSec         = -1;   // last drawn seconds
 static bool    s_showIcons       = true;  // show sun/moon icons
 static bool    s_rainbow         = false; // rainbow color cycling
 static uint8_t s_rainbowHue      = 0;     // current hue 0-255
+static uint8_t s_rainbowSpeed    = 1;     // hue increment per refresh (1..32)
 static bool    s_ecoMode         = false; // power saving mode
 static uint8_t s_dimLevel        = 25;    // dim digit intensity % (1-100)
 static bool    s_italic          = false; // use italic DSEG7 variant
+
+// Manual day/night override: when active, force the chosen mode until the
+// natural (time-based) state would change at the next scheduled transition.
+static bool    s_ovrActive       = false;
+static bool    s_ovrNight        = false; // value being forced
+static bool    s_ovrNaturalAtSet = false; // natural state when override was set
+
+// Forward decl (definition lives further down in this TU)
+static bool isNightTime(int hour, int minute);
 
 // Pointer to the currently active large clock font
 static inline const GFXfont* clockFont() {
@@ -155,12 +165,42 @@ bool     display_getShowIcons(){ return s_showIcons; }
 void     display_setShowIcons(bool show) { s_showIcons = show; }
 bool     display_getRainbow() { return s_rainbow; }
 void     display_setRainbow(bool on) { s_rainbow = on; }
+uint8_t  display_getRainbowSpeed() { return s_rainbowSpeed; }
+void     display_setRainbowSpeed(uint8_t v) {
+  if (v < 1)  v = 1;
+  if (v > 32) v = 32;
+  s_rainbowSpeed = v;
+}
 bool     display_getItalic() { return s_italic; }
 void     display_setItalic(bool on) {
   if (on == s_italic) return;
   s_italic = on;
   display_resetClock();   // force re-layout (italic has different metrics)
 }
+
+void display_toggleNightOverride() {
+  // Compute current natural state from the clock
+  struct tm ti;
+  time_t now = time(nullptr);
+  localtime_r(&now, &ti);
+  bool validTime = (ti.tm_year >= 124);
+  bool natural = validTime && isNightTime(ti.tm_hour, ti.tm_min);
+
+  if (s_ovrActive) {
+    // Already overriding -> cancel it
+    s_ovrActive = false;
+  } else {
+    // Engage override forcing the opposite of the natural state
+    s_ovrActive = true;
+    s_ovrNight = !natural;
+    s_ovrNaturalAtSet = natural;
+  }
+  // Force a redraw so the new colors / backlight take effect immediately
+  s_lastNight = -1;
+  s_lastClockStr[0] = '\0';
+}
+
+bool display_isNightOverrideActive() { return s_ovrActive; }
 bool     display_getEcoMode() { return s_ecoMode; }
 void     display_setEcoMode(bool on) { s_ecoMode = on; }
 uint8_t  display_getDimLevel() { return s_dimLevel; }
@@ -326,7 +366,14 @@ void display_showClock() {
 
   // Pick day/night colors and backlight based on current time
   uint16_t fg, dim;
-  bool night = validTime && isNightTime(ti.tm_hour, ti.tm_min);
+  bool natural = validTime && isNightTime(ti.tm_hour, ti.tm_min);
+  // Manual override clears itself once the next scheduled transition happens
+  // (i.e. the natural state has flipped away from what it was when the user
+  // pressed the override button).
+  if (s_ovrActive && natural != s_ovrNaturalAtSet) {
+    s_ovrActive = false;
+  }
+  bool night = s_ovrActive ? s_ovrNight : natural;
   if (night) {
     fg  = s_nightFg;
     dim = s_nightDim;
@@ -339,7 +386,7 @@ void display_showClock() {
 
   // Rainbow mode: override fg with cycling hue
   if (s_rainbow) {
-    s_rainbowHue += 1;
+    s_rainbowHue += s_rainbowSpeed;
     // HSV to RGB565 (S=255, V=255)
     uint8_t h = s_rainbowHue;
     uint8_t region = h / 43;

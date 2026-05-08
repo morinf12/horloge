@@ -52,6 +52,7 @@ static const char* s_nuitLabels[] = { "Heure", "Couleur", "Luminosite" };
 enum SubAffichage : uint8_t {
   SA_ICONES = 0,
   SA_RAINBOW,
+  SA_RAINBOW_SPD,
   SA_ECO,
   SA_DIM_LEVEL,
   SA_ROTATION,
@@ -60,7 +61,7 @@ enum SubAffichage : uint8_t {
   SA_ITALIC,
   SA_COUNT
 };
-static const char* s_affLabels[] = { "Icones sol/lune", "Arc-en-ciel", "Mode eco", "Intensite dim", "Rotation 180", "Secondes", "Meteo", "Italique" };
+static const char* s_affLabels[] = { "Icones sol/lune", "Arc-en-ciel", "Vitesse arc-en-ciel", "Mode eco", "Intensite dim", "Rotation 180", "Secondes", "Meteo", "Italique" };
 
 // Sub-menu: WiFi
 enum SubWifi : uint8_t {
@@ -90,6 +91,7 @@ static uint16_t s_dayFg,  s_nightFg;
 static uint8_t  s_dayBl,  s_nightBl;
 static bool     s_showIcons;
 static bool     s_rainbow;
+static uint8_t  s_rainbowSpeed;
 static bool     s_ecoMode;
 static uint8_t  s_dimLevel;
 static bool     s_rotation180;
@@ -120,6 +122,7 @@ static void saveAll() {
   prefs.putUChar("night_bl", s_nightBl);
   prefs.putBool("icons",     s_showIcons);
   prefs.putBool("rainbow",   s_rainbow);
+  prefs.putUChar("rb_spd",   s_rainbowSpeed);
   prefs.putBool("eco",       s_ecoMode);
   prefs.putUChar("dim_lvl",  s_dimLevel);
   prefs.putBool("rot180",    s_rotation180);
@@ -171,6 +174,9 @@ void menu_begin() {}
 
 bool menu_isActive() { return s_active; }
 
+static void openMenu();
+void menu_open() { if (!s_active) openMenu(); }
+
 static void openMenu() {
   s_active   = true;
   s_dirty    = true;
@@ -188,6 +194,7 @@ static void openMenu() {
   s_nightBl   = display_getNightBl();
   s_showIcons = display_getShowIcons();
   s_rainbow   = display_getRainbow();
+  s_rainbowSpeed = display_getRainbowSpeed();
   s_ecoMode   = display_getEcoMode();
   s_dimLevel  = display_getDimLevel();
   s_rotation180 = display_getRotation180();
@@ -287,6 +294,11 @@ static void adjustValue(int8_t dir) {
     } else if (s_subCur == SA_RAINBOW) {
       s_rainbow = !s_rainbow;
       display_setRainbow(s_rainbow);
+    } else if (s_subCur == SA_RAINBOW_SPD) {
+      int v = s_rainbowSpeed + dir;
+      if (v < 1) v = 1; if (v > 32) v = 32;
+      s_rainbowSpeed = v;
+      display_setRainbowSpeed(s_rainbowSpeed);
     } else if (s_subCur == SA_ECO) {
       s_ecoMode = !s_ecoMode;
       display_setEcoMode(s_ecoMode);
@@ -482,6 +494,10 @@ static void getItemValue(uint8_t idx, bool editing, char* buf) {
       return;
     } else if (idx == SA_RAINBOW) {
       strcpy(buf, s_rainbow ? "OUI" : "NON");
+      return;
+    } else if (idx == SA_RAINBOW_SPD) {
+      if (editing) sprintf(buf, "[%2d]", s_rainbowSpeed);
+      else         sprintf(buf, "%2d", s_rainbowSpeed);
       return;
     } else if (idx == SA_ECO) {
       strcpy(buf, s_ecoMode ? "OUI" : "NON");

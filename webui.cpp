@@ -114,6 +114,10 @@ static const char INDEX_HTML[] PROGMEM = R"HTML(
       <input id="rainbow" type="checkbox">
     </div>
     <div class="row">
+      <label>Vitesse arc-en-ciel <span id="rbSpdV">1</span></label>
+      <input id="rbSpd" type="range" min="1" max="32" step="1" value="1">
+    </div>
+    <div class="row">
       <label>Mode &#233;co (CPU 80MHz, WiFi PS)</label>
       <input id="eco" type="checkbox">
     </div>
@@ -128,6 +132,14 @@ static const char INDEX_HTML[] PROGMEM = R"HTML(
     <div class="row">
       <label>Italique</label>
       <input id="italic" type="checkbox">
+    </div>
+    <div class="row">
+      <label>Secondes</label>
+      <input id="showSec" type="checkbox">
+    </div>
+    <div class="row">
+      <label>M&#233;t&#233;o</label>
+      <input id="showWx" type="checkbox">
     </div>
     <button class="primary" onclick="saveDisplay()">Enregistrer</button>
   </section>
@@ -249,27 +261,35 @@ function loadDisplay() {
   fetch('/api/display').then(r=>r.json()).then(d=>{
     document.getElementById('icons').checked = d.icons;
     document.getElementById('rainbow').checked = d.rainbow;
+    document.getElementById('rbSpd').value = d.rb_spd;
+    document.getElementById('rbSpdV').textContent = d.rb_spd;
     document.getElementById('eco').checked = d.eco;
     document.getElementById('dimLvl').value = d.dim_lvl;
     document.getElementById('dimLvlV').textContent = d.dim_lvl;
     document.getElementById('rot180').checked = d.rot180;
     document.getElementById('italic').checked = d.italic;
+    document.getElementById('showSec').checked = d.showSec;
+    document.getElementById('showWx').checked = d.showWx;
     document.documentElement.style.setProperty('--clock-font', d.italic ? "'7seg-i'" : "'7seg'");
   }).catch(()=>{});
 }
 function saveDisplay() {
   const icons = document.getElementById('icons').checked ? 1 : 0;
   const rainbow = document.getElementById('rainbow').checked ? 1 : 0;
+  const rbSpd = document.getElementById('rbSpd').value;
   const eco = document.getElementById('eco').checked ? 1 : 0;
   const dimLvl = document.getElementById('dimLvl').value;
   const rot180 = document.getElementById('rot180').checked ? 1 : 0;
   const italic = document.getElementById('italic').checked ? 1 : 0;
-  fetch('/api/display?icons='+icons+'&rainbow='+rainbow+'&eco='+eco+'&dim_lvl='+dimLvl+'&rot180='+rot180+'&italic='+italic).then(()=>{
+  const showSec = document.getElementById('showSec').checked ? 1 : 0;
+  const showWx = document.getElementById('showWx').checked ? 1 : 0;
+  fetch('/api/display?icons='+icons+'&rainbow='+rainbow+'&eco='+eco+'&dim_lvl='+dimLvl+'&rot180='+rot180+'&italic='+italic+'&showSec='+showSec+'&showWx='+showWx+'&rb_spd='+rbSpd).then(()=>{
     document.documentElement.style.setProperty('--clock-font', italic ? "'7seg-i'" : "'7seg'");
     alert('Enregistr\u00e9\u00a0!');
   });
 }
 document.getElementById('dimLvl').oninput = function(){ document.getElementById('dimLvlV').textContent=this.value; };
+document.getElementById('rbSpd').oninput = function(){ document.getElementById('rbSpdV').textContent=this.value; };
 loadDisplay();
 
 // Weather config
@@ -841,6 +861,12 @@ static void hDisplay() {
     s_prefs.putBool("rainbow", v);
     display_setRainbow(v);
   }
+  if (s_server.hasArg("rb_spd")) {
+    int v = s_server.arg("rb_spd").toInt();
+    if (v < 1) v = 1; if (v > 32) v = 32;
+    s_prefs.putUChar("rb_spd", (uint8_t)v);
+    display_setRainbowSpeed((uint8_t)v);
+  }
   if (s_server.hasArg("eco")) {
     bool v = s_server.arg("eco").toInt() != 0;
     s_prefs.putBool("eco", v);
@@ -874,6 +900,7 @@ static void hDisplay() {
   }
   bool icons = s_prefs.getBool("icons", true);
   bool rainbow = s_prefs.getBool("rainbow", false);
+  uint8_t rbSpd = s_prefs.getUChar("rb_spd", 1);
   bool eco = s_prefs.getBool("eco", false);
   uint8_t dimLvl = s_prefs.getUChar("dim_lvl", 25);
   bool rot180 = s_prefs.getBool("rot180", false);
@@ -882,6 +909,7 @@ static void hDisplay() {
   bool italic = s_prefs.getBool("italic", false);
   String j = "{\"icons\":" + String(icons ? "true" : "false")
            + ",\"rainbow\":" + String(rainbow ? "true" : "false")
+           + ",\"rb_spd\":" + String(rbSpd)
            + ",\"eco\":" + String(eco ? "true" : "false")
            + ",\"dim_lvl\":" + String(dimLvl)
            + ",\"rot180\":" + String(rot180 ? "true" : "false")
@@ -1032,7 +1060,16 @@ static void hDebugPress() {
   else if (b == "a")     btn = BTN_A;
   else if (b == "b")     btn = BTN_B;
   if (btn != BTN_NONE) {
-    menu_handleButton(btn);
+    // On the debug page, treat a lone "A" press as a menu shortcut so the
+    // user doesn't need to simulate the DOWN+A chord required on the device.
+    if (!menu_isActive() && btn == BTN_A) {
+      menu_open();
+    } else if (!menu_isActive() && btn == BTN_UP) {
+      // Mirror device behavior: UP outside the menu toggles day/night override.
+      display_toggleNightOverride();
+    } else {
+      menu_handleButton(btn);
+    }
     if (menu_isActive()) menu_draw();
   }
   s_server.send(200, "application/json", "{\"ok\":true}");
@@ -1139,6 +1176,8 @@ void webui_begin() {
   display_setShowIcons(icons);
   bool rainbow = s_prefs.getBool("rainbow", false);
   display_setRainbow(rainbow);
+  uint8_t rbSpd = s_prefs.getUChar("rb_spd", 1);
+  display_setRainbowSpeed(rbSpd);
   bool eco = s_prefs.getBool("eco", false);
   display_setEcoMode(eco);
   uint8_t dimLvl = s_prefs.getUChar("dim_lvl", 25);
