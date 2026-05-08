@@ -57,10 +57,26 @@ void loop() {
     if (display_getEcoMode()) {
       display_sleep(false);
     }
-    // Outside the menu: UP toggles a manual day/night override that
-    // lasts until the next scheduled transition.
+    // Outside the menu: short-cut toggles for the most common options.
+    // (DOWN+A still opens the menu, handled inside menu_handleButton.)
     if (!menu_isActive() && btn == BTN_UP) {
+      // UP: manual day/night override until next scheduled transition.
       display_toggleNightOverride();
+    } else if (!menu_isActive() && btn == BTN_LEFT && !buttons_isHeld(BTN_A)) {
+      // LEFT: toggle sun/moon icons.
+      bool v = !display_getShowIcons();
+      display_setShowIcons(v);
+      Preferences p; p.begin("wifi", false); p.putBool("icons",   v); p.end();
+    } else if (!menu_isActive() && btn == BTN_RIGHT && !buttons_isHeld(BTN_A)) {
+      // RIGHT: toggle seconds display.
+      bool v = !display_getShowSeconds();
+      display_setShowSeconds(v);
+      Preferences p; p.begin("wifi", false); p.putBool("showSec", v); p.end();
+    } else if (!menu_isActive() && btn == BTN_DOWN && !buttons_isHeld(BTN_A)) {
+      // DOWN: toggle weather display.
+      bool v = !display_getShowWeather();
+      display_setShowWeather(v);
+      Preferences p; p.begin("wifi", false); p.putBool("showWx",  v); p.end();
     } else {
       menu_handleButton(btn);
     }

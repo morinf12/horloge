@@ -1067,6 +1067,18 @@ static void hDebugPress() {
     } else if (!menu_isActive() && btn == BTN_UP) {
       // Mirror device behavior: UP outside the menu toggles day/night override.
       display_toggleNightOverride();
+    } else if (!menu_isActive() && btn == BTN_LEFT) {
+      bool v = !display_getShowIcons();
+      display_setShowIcons(v);
+      s_prefs.putBool("icons", v);
+    } else if (!menu_isActive() && btn == BTN_RIGHT) {
+      bool v = !display_getShowSeconds();
+      display_setShowSeconds(v);
+      s_prefs.putBool("showSec", v);
+    } else if (!menu_isActive() && btn == BTN_DOWN) {
+      bool v = !display_getShowWeather();
+      display_setShowWeather(v);
+      s_prefs.putBool("showWx", v);
     } else {
       menu_handleButton(btn);
     }
