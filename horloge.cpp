@@ -77,6 +77,11 @@ void loop() {
       bool v = !display_getShowWeather();
       display_setShowWeather(v);
       Preferences p; p.begin("wifi", false); p.putBool("showWx",  v); p.end();
+    } else if (!menu_isActive() && btn == BTN_B) {
+      // B: toggle 12h/24h time format.
+      bool v = !display_get12h();
+      display_set12h(v);
+      Preferences p; p.begin("wifi", false); p.putBool("h12", v); p.end();
     } else {
       menu_handleButton(btn);
     }

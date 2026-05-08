@@ -141,6 +141,10 @@ static const char INDEX_HTML[] PROGMEM = R"HTML(
       <label>M&#233;t&#233;o</label>
       <input id="showWx" type="checkbox">
     </div>
+    <div class="row">
+      <label>Format 12h</label>
+      <input id="h12" type="checkbox">
+    </div>
     <button class="primary" onclick="saveDisplay()">Enregistrer</button>
   </section>
 
@@ -270,6 +274,7 @@ function loadDisplay() {
     document.getElementById('italic').checked = d.italic;
     document.getElementById('showSec').checked = d.showSec;
     document.getElementById('showWx').checked = d.showWx;
+    document.getElementById('h12').checked = d.h12;
     document.documentElement.style.setProperty('--clock-font', d.italic ? "'7seg-i'" : "'7seg'");
   }).catch(()=>{});
 }
@@ -283,7 +288,8 @@ function saveDisplay() {
   const italic = document.getElementById('italic').checked ? 1 : 0;
   const showSec = document.getElementById('showSec').checked ? 1 : 0;
   const showWx = document.getElementById('showWx').checked ? 1 : 0;
-  fetch('/api/display?icons='+icons+'&rainbow='+rainbow+'&eco='+eco+'&dim_lvl='+dimLvl+'&rot180='+rot180+'&italic='+italic+'&showSec='+showSec+'&showWx='+showWx+'&rb_spd='+rbSpd).then(()=>{
+  const h12 = document.getElementById('h12').checked ? 1 : 0;
+  fetch('/api/display?icons='+icons+'&rainbow='+rainbow+'&eco='+eco+'&dim_lvl='+dimLvl+'&rot180='+rot180+'&italic='+italic+'&showSec='+showSec+'&showWx='+showWx+'&rb_spd='+rbSpd+'&h12='+h12).then(()=>{
     document.documentElement.style.setProperty('--clock-font', italic ? "'7seg-i'" : "'7seg'");
     alert('Enregistr\u00e9\u00a0!');
   });
@@ -898,6 +904,11 @@ static void hDisplay() {
     s_prefs.putBool("showWx", v);
     display_setShowWeather(v);
   }
+  if (s_server.hasArg("h12")) {
+    bool v = s_server.arg("h12").toInt() != 0;
+    s_prefs.putBool("h12", v);
+    display_set12h(v);
+  }
   bool icons = s_prefs.getBool("icons", true);
   bool rainbow = s_prefs.getBool("rainbow", false);
   uint8_t rbSpd = s_prefs.getUChar("rb_spd", 1);
@@ -907,6 +918,7 @@ static void hDisplay() {
   bool showSec = s_prefs.getBool("showSec", true);
   bool showWx = s_prefs.getBool("showWx", true);
   bool italic = s_prefs.getBool("italic", false);
+  bool h12 = s_prefs.getBool("h12", false);
   String j = "{\"icons\":" + String(icons ? "true" : "false")
            + ",\"rainbow\":" + String(rainbow ? "true" : "false")
            + ",\"rb_spd\":" + String(rbSpd)
@@ -915,7 +927,8 @@ static void hDisplay() {
            + ",\"rot180\":" + String(rot180 ? "true" : "false")
            + ",\"showSec\":" + String(showSec ? "true" : "false")
            + ",\"showWx\":" + String(showWx ? "true" : "false")
-           + ",\"italic\":" + String(italic ? "true" : "false") + "}";
+           + ",\"italic\":" + String(italic ? "true" : "false")
+           + ",\"h12\":" + String(h12 ? "true" : "false") + "}";
   s_server.send(200, "application/json", j);
 }
 
@@ -1079,6 +1092,10 @@ static void hDebugPress() {
       bool v = !display_getShowWeather();
       display_setShowWeather(v);
       s_prefs.putBool("showWx", v);
+    } else if (!menu_isActive() && btn == BTN_B) {
+      bool v = !display_get12h();
+      display_set12h(v);
+      s_prefs.putBool("h12", v);
     } else {
       menu_handleButton(btn);
     }
@@ -1202,6 +1219,8 @@ void webui_begin() {
   display_setShowWeather(showWx);
   bool italic = s_prefs.getBool("italic", false);
   display_setItalic(italic);
+  bool h12 = s_prefs.getBool("h12", false);
+  display_set12h(h12);
 
   // Routes
   s_server.on("/",            HTTP_GET,  hRoot);

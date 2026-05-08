@@ -4,6 +4,7 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_ST7789.h>
 #include <time.h>
+#include <Preferences.h>
 
 // Backlight PWM
 #define BL_PWM_CHANNEL  0
@@ -19,6 +20,11 @@ static uint8_t s_curBl   = DEFAULT_DAY_BL;
 
 static SPIClass s_spi(FSPI);   // ESP32-S2 has FSPI/HSPI; FSPI is the user SPI bus
 static Adafruit_ST7789 tft(&s_spi, TFT_CS_PIN, TFT_DC_PIN, TFT_RST_PIN);
+
+// Forward declarations of override state (defined later in the file).
+static bool s_ovrActive = false;
+static bool s_ovrNight = false;
+static bool s_ovrNaturalAtSet = false;
 
 void display_begin() {
   // Setup backlight as PWM
@@ -42,6 +48,14 @@ void display_begin() {
   tft.init(TFT_WIDTH, TFT_HEIGHT);   // 240x280
   tft.setRotation(3);                // landscape 280x240
   tft.fillScreen(ST77XX_BLACK);
+
+  // Restore persisted day/night override (set via UP button).
+  Preferences p;
+  p.begin("wifi", true);
+  s_ovrActive       = p.getBool("ovrAct", false);
+  s_ovrNight        = p.getBool("ovrNgt", false);
+  s_ovrNaturalAtSet = p.getBool("ovrNat", false);
+  p.end();
 }
 
 void display_showBoot(const char* hostname) {
@@ -99,9 +113,7 @@ static bool    s_italic          = false; // use italic DSEG7 variant
 
 // Manual day/night override: when active, force the chosen mode until the
 // natural (time-based) state would change at the next scheduled transition.
-static bool    s_ovrActive       = false;
-static bool    s_ovrNight        = false; // value being forced
-static bool    s_ovrNaturalAtSet = false; // natural state when override was set
+// (state vars declared near the top of this TU)
 
 // Forward decl (definition lives further down in this TU)
 static bool isNightTime(int hour, int minute);
@@ -112,6 +124,7 @@ static inline const GFXfont* clockFont() {
 }
 static bool    s_showSeconds     = true;  // show seconds display
 static bool    s_showWeather     = true;  // show weather temperature
+static bool    s_h12             = false; // 12-hour format when true, else 24h
 static bool    s_displaySleeping = false; // TFT in sleep mode
 
 // Off-screen buffer for flicker-free clock updates
@@ -198,6 +211,14 @@ void display_toggleNightOverride() {
   // Force a redraw so the new colors / backlight take effect immediately
   s_lastNight = -1;
   s_lastClockStr[0] = '\0';
+
+  // Persist so the override survives a reboot.
+  Preferences p;
+  p.begin("wifi", false);
+  p.putBool("ovrAct",  s_ovrActive);
+  p.putBool("ovrNgt",  s_ovrNight);
+  p.putBool("ovrNat",  s_ovrNaturalAtSet);
+  p.end();
 }
 
 bool display_isNightOverrideActive() { return s_ovrActive; }
@@ -228,6 +249,12 @@ void     display_setShowWeather(bool on) {
     const int16_t ty = LAND_H - 50;
     tft.fillRect(tx, ty, 140, 50, ST77XX_BLACK);
   }
+}
+bool     display_get12h() { return s_h12; }
+void     display_set12h(bool on) {
+  if (on == s_h12) return;
+  s_h12 = on;
+  display_resetClock();
 }
 void     display_setRotation180(bool on) {
   s_rot180 = on;
@@ -354,8 +381,13 @@ void display_showClock() {
   char d[4];
   char timeStr[6];   // for change detection
   if (validTime) {
-    d[0] = (ti.tm_hour >= 10) ? ('0' + ti.tm_hour / 10) : ' ';
-    d[1] = '0' + ti.tm_hour % 10;
+    int displayHour = ti.tm_hour;
+    if (s_h12) {
+      displayHour = ti.tm_hour % 12;
+      if (displayHour == 0) displayHour = 12;
+    }
+    d[0] = (displayHour >= 10) ? ('0' + displayHour / 10) : ' ';
+    d[1] = '0' + displayHour % 10;
     d[2] = '0' + ti.tm_min / 10;
     d[3] = '0' + ti.tm_min % 10;
     snprintf(timeStr, sizeof(timeStr), "%c%c%c%c", d[0], d[1], d[2], d[3]);

@@ -59,9 +59,10 @@ enum SubAffichage : uint8_t {
   SA_SECONDES,
   SA_METEO,
   SA_ITALIC,
+  SA_FORMAT_12H,
   SA_COUNT
 };
-static const char* s_affLabels[] = { "Icones sol/lune", "Arc-en-ciel", "Vitesse arc-en-ciel", "Mode eco", "Intensite dim", "Rotation 180", "Secondes", "Meteo", "Italique" };
+static const char* s_affLabels[] = { "Icones sol/lune", "Arc-en-ciel", "Vitesse arc-en-ciel", "Mode eco", "Intensite dim", "Rotation 180", "Secondes", "Meteo", "Italique", "Format 12h" };
 
 // Sub-menu: WiFi
 enum SubWifi : uint8_t {
@@ -98,6 +99,7 @@ static bool     s_rotation180;
 static bool     s_showSeconds;
 static bool     s_showWeather;
 static bool     s_italic;
+static bool     s_h12;
 
 // ---- Color helpers ----------------------------------------------------------
 static void rgb565_to_rgb(uint16_t c, uint8_t& r, uint8_t& g, uint8_t& b) {
@@ -108,6 +110,42 @@ static void rgb565_to_rgb(uint16_t c, uint8_t& r, uint8_t& g, uint8_t& b) {
 
 static uint16_t rgb_to_565(uint8_t r, uint8_t g, uint8_t b) {
   return ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3);
+}
+
+// Hue (0..359) -> RGB565, full saturation & value.
+static uint16_t hue_to_565(uint16_t h) {
+  h %= 360;
+  uint8_t sector = h / 60;
+  uint8_t f = (h % 60) * 255 / 60; // 0..255
+  uint8_t p = 0;
+  uint8_t q = 255 - f;
+  uint8_t t = f;
+  uint8_t r=0, g=0, b=0;
+  switch (sector) {
+    case 0: r=255; g=t;   b=p;   break;
+    case 1: r=q;   g=255; b=p;   break;
+    case 2: r=p;   g=255; b=t;   break;
+    case 3: r=p;   g=q;   b=255; break;
+    case 4: r=t;   g=p;   b=255; break;
+    case 5: r=255; g=p;   b=q;   break;
+  }
+  return rgb_to_565(r, g, b);
+}
+
+// RGB565 -> hue (0..359). For grayscale colors, returns 0.
+static uint16_t rgb565_to_hue(uint16_t c) {
+  uint8_t r, g, b;
+  rgb565_to_rgb(c, r, g, b);
+  uint8_t mx = r > g ? (r > b ? r : b) : (g > b ? g : b);
+  uint8_t mn = r < g ? (r < b ? r : b) : (g < b ? g : b);
+  if (mx == mn) return 0;
+  int d = mx - mn;
+  int h;
+  if (mx == r)      h = ((int)(g - b) * 60) / d;
+  else if (mx == g) h = ((int)(b - r) * 60) / d + 120;
+  else              h = ((int)(r - g) * 60) / d + 240;
+  if (h < 0) h += 360;
+  return (uint16_t)(h % 360);
 }
 
 // ---- Preferences save -------------------------------------------------------
@@ -129,6 +167,7 @@ static void saveAll() {
   prefs.putBool("showSec",   s_showSeconds);
   prefs.putBool("showWx",    s_showWeather);
   prefs.putBool("italic",    s_italic);
+  prefs.putBool("h12",       s_h12);
   prefs.end();
 
   display_setSchedule(s_dayMin, s_nightMin);
@@ -201,6 +240,7 @@ static void openMenu() {
   s_showSeconds = display_getShowSeconds();
   s_showWeather = display_getShowWeather();
   s_italic      = display_getItalic();
+  s_h12         = display_get12h();
 }
 
 static void closeMenu() {
@@ -214,10 +254,10 @@ static void closeMenu() {
 static uint8_t maxSubFields() {
   if (s_mainCur == MAIN_JOUR) {
     if (s_subCur == SJ_HEURE)    return 2;
-    if (s_subCur == SJ_COULEUR)  return 3;
+    if (s_subCur == SJ_COULEUR)  return 1;
   } else if (s_mainCur == MAIN_NUIT) {
     if (s_subCur == SN_HEURE)    return 2;
-    if (s_subCur == SN_COULEUR)  return 3;
+    if (s_subCur == SN_COULEUR)  return 1;
   }
   return 1;
 }
@@ -238,12 +278,10 @@ static void adjustValue(int8_t dir) {
         display_setSchedule(s_dayMin, s_nightMin);
         break;
       case SJ_COULEUR: {
-        uint8_t r, g, b;
-        rgb565_to_rgb(s_dayFg, r, g, b);
-        if (s_subField == 0)      { int v = r + dir*8; if(v<0)v=0; if(v>255)v=255; r=v; }
-        else if (s_subField == 1) { int v = g + dir*8; if(v<0)v=0; if(v>255)v=255; g=v; }
-        else                      { int v = b + dir*8; if(v<0)v=0; if(v>255)v=255; b=v; }
-        s_dayFg = rgb_to_565(r, g, b);
+        int h = (int)rgb565_to_hue(s_dayFg) + dir * 10;
+        while (h < 0)   h += 360;
+        while (h >= 360) h -= 360;
+        s_dayFg = hue_to_565((uint16_t)h);
         display_setColors(s_dayFg, s_nightFg);
         break;
       }
@@ -270,12 +308,10 @@ static void adjustValue(int8_t dir) {
         display_setSchedule(s_dayMin, s_nightMin);
         break;
       case SN_COULEUR: {
-        uint8_t r, g, b;
-        rgb565_to_rgb(s_nightFg, r, g, b);
-        if (s_subField == 0)      { int v = r + dir*8; if(v<0)v=0; if(v>255)v=255; r=v; }
-        else if (s_subField == 1) { int v = g + dir*8; if(v<0)v=0; if(v>255)v=255; g=v; }
-        else                      { int v = b + dir*8; if(v<0)v=0; if(v>255)v=255; b=v; }
-        s_nightFg = rgb_to_565(r, g, b);
+        int h = (int)rgb565_to_hue(s_nightFg) + dir * 10;
+        while (h < 0)   h += 360;
+        while (h >= 360) h -= 360;
+        s_nightFg = hue_to_565((uint16_t)h);
         display_setColors(s_dayFg, s_nightFg);
         break;
       }
@@ -319,6 +355,9 @@ static void adjustValue(int8_t dir) {
     } else if (s_subCur == SA_ITALIC) {
       s_italic = !s_italic;
       display_setItalic(s_italic);
+    } else if (s_subCur == SA_FORMAT_12H) {
+      s_h12 = !s_h12;
+      display_set12h(s_h12);
     }
   } else if (s_mainCur == MAIN_WIFI) {
     if (s_subCur == SW_ACTIVER) {
@@ -459,14 +498,10 @@ static void formatTime(char* buf, uint16_t mins, uint8_t subF, bool editing) {
 }
 
 static void formatColor(char* buf, uint16_t c565, uint8_t subF, bool editing) {
-  uint8_t r, g, b;
-  rgb565_to_rgb(c565, r, g, b);
-  if (editing) {
-    const char* fmt[] = { "[%3d] %3d  %3d", " %3d [%3d] %3d", " %3d  %3d [%3d]" };
-    sprintf(buf, fmt[subF], r, g, b);
-  } else {
-    sprintf(buf, "%3d %3d %3d", r, g, b);
-  }
+  (void)subF;
+  uint16_t h = rgb565_to_hue(c565);
+  if (editing) sprintf(buf, "[%3u\xF8]", h);
+  else         sprintf(buf, " %3u\xF8",  h);
 }
 
 static void formatPct(char* buf, uint8_t pct, bool editing) {
@@ -516,6 +551,9 @@ static void getItemValue(uint8_t idx, bool editing, char* buf) {
       return;
     } else if (idx == SA_ITALIC) {
       strcpy(buf, s_italic ? "OUI" : "NON");
+      return;
+    } else if (idx == SA_FORMAT_12H) {
+      strcpy(buf, s_h12 ? "12h" : "24h");
       return;
     }
   } else if (s_mainCur == MAIN_WIFI) {

@@ -37,6 +37,8 @@ bool     display_getShowSeconds();
 void     display_setShowSeconds(bool on);
 bool     display_getShowWeather();
 void     display_setShowWeather(bool on);
+bool     display_get12h();
+void     display_set12h(bool on);
 void     display_sleep(bool on);
 void     display_showTemp(float tempC);  // show external temperature on TFT
 
