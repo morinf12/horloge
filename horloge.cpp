@@ -108,7 +108,7 @@ void loop() {
 
   uint32_t interval = eco ? 5000 : 500;
   static uint32_t lastRefresh = 0;
-  static uint32_t lastBatt = 0;
+  static uint32_t lastBatt = (uint32_t)-10000;  // fire on first iteration
   static uint32_t lastWeather = 0;
   uint32_t now = millis();
   if (now - lastBatt >= 10000) {
@@ -124,5 +124,6 @@ void loop() {
     lastRefresh = now;
     display_showClock();
     if (weather_valid()) display_showTemp(weather_temp());
+    display_showBattery(battery_percent(), battery_voltage());
   }
 }

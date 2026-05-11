@@ -26,6 +26,10 @@ static bool s_ovrActive = false;
 static bool s_ovrNight = false;
 static bool s_ovrNaturalAtSet = false;
 
+// Forward declarations of indicator state (defined later in the file).
+static int8_t s_lastBattPct = -1;
+static float  s_lastTemp = -999.0f;
+
 void display_begin() {
   // Setup backlight as PWM
   ledcSetup(BL_PWM_CHANNEL, BL_PWM_FREQ, BL_PWM_RES);
@@ -124,6 +128,7 @@ static inline const GFXfont* clockFont() {
 }
 static bool    s_showSeconds     = true;  // show seconds display
 static bool    s_showWeather     = true;  // show weather temperature
+static bool    s_showBattery     = true;  // show battery indicator
 static bool    s_h12             = false; // 12-hour format when true, else 24h
 static bool    s_displaySleeping = false; // TFT in sleep mode
 
@@ -256,6 +261,24 @@ void     display_set12h(bool on) {
   s_h12 = on;
   display_resetClock();
 }
+bool     display_getShowBattery() { return s_showBattery; }
+void     display_setShowBattery(bool on) {
+  if (on == s_showBattery) return;
+  s_showBattery = on;
+  if (!on) {
+    // Clear the indicator area (must mirror the geometry in display_showBattery).
+    const int16_t bw = 28, bh = 12;
+    const int16_t bx = LAND_W - bw - 8 - 14;
+    const int16_t by = 6;
+    const int16_t areaX = bx - 38;
+    const int16_t areaW = LAND_W - areaX - 2;
+    const int16_t areaH = bh + 4;
+    tft.fillRect(areaX, by - 1, areaW, areaH, ST77XX_BLACK);
+    s_lastBattPct = -1;
+  } else {
+    s_lastBattPct = -1;  // force redraw on next call
+  }
+}
 void     display_setRotation180(bool on) {
   s_rot180 = on;
   tft.setRotation(on ? 1 : 3);  // 3=landscape, 1=landscape flipped 180
@@ -288,6 +311,8 @@ void display_resetClock() {
   s_clockInited = false;
   s_lastNight = -1;
   s_lastClockStr[0] = '\0';
+  s_lastBattPct = -1;          // force battery indicator redraw
+  s_lastTemp = -999.0f;        // force temp redraw
 }
 
 static void applyBacklight(uint8_t pct) {
@@ -445,6 +470,10 @@ void display_showClock() {
   // First-time init: compute layout, allocate canvas
   if (!s_clockInited) {
     tft.fillScreen(ST77XX_BLACK);
+    // Indicators were just wiped; force them to redraw on the next tick.
+    s_lastBattPct = -1;
+    s_lastTemp = -999.0f;
+    s_lastNight = -1;
     const GFXfont* fnt = clockFont();
     tft.setFont(fnt);
     tft.setTextSize(1);
@@ -645,7 +674,6 @@ void display_showClock() {
 }
 
 // ---- External temperature display (bottom-right) ----------------------------
-static float s_lastTemp = -999.0f;
 static uint16_t s_lastTempColor = 0;
 
 void display_showTemp(float tempC) {
@@ -673,4 +701,48 @@ void display_showTemp(float tempC) {
   int t = (int)roundf(tempC);
   snprintf(buf, sizeof(buf), "%d%cC", t, (char)247);  // 247 = degree symbol in default font
   tft.print(buf);
+}
+
+// ---- Battery indicator (top-right) ------------------------------------------
+void display_showBattery(uint8_t pct, float volts) {
+  if (!s_showBattery) return;
+  // Layout (top-right corner, shifted 14px left to avoid rounded corner)
+  const int16_t bw = 28, bh = 12;            // body width / height
+  const int16_t bx = LAND_W - bw - 8 - 14;
+  const int16_t by = 6;
+  const int16_t txtX = bx - 36;              // percent text left of icon
+  const int16_t txtY = by;
+  const int16_t areaX = txtX - 2;
+  const int16_t areaW = LAND_W - areaX - 2;
+  const int16_t areaH = bh + 4;
+
+  // Skip if value unchanged (avoid flicker)
+  if ((int8_t)pct == s_lastBattPct) return;
+  s_lastBattPct = (int8_t)pct;
+
+  // Clear the indicator area
+  tft.fillRect(areaX, by - 1, areaW, areaH, ST77XX_BLACK);
+
+  // Pick color based on charge level
+  uint16_t col;
+  if (volts <= 0.05f)   col = 0x7BEF;        // gray (no battery)
+  else if (pct <= 15)   col = 0xF800;        // red
+  else if (pct <= 35)   col = 0xFD20;        // orange
+  else                  col = 0x07E0;        // green
+
+  // Battery body: outline + nib
+  tft.drawRect(bx, by, bw, bh, col);
+  tft.fillRect(bx + bw, by + 3, 2, bh - 6, col);
+
+  // Fill proportional to %
+  int16_t fillW = ((bw - 4) * pct) / 100;
+  if (fillW > 0) tft.fillRect(bx + 2, by + 2, fillW, bh - 4, col);
+
+  // Percent text (size 1, default font ~6px wide)
+  tft.setFont(NULL);
+  tft.setTextSize(1);
+  tft.setTextColor(col, ST77XX_BLACK);
+  tft.setCursor(txtX, txtY + 2);
+  if (volts <= 0.05f) tft.print(F("---"));
+  else                { char b[6]; snprintf(b, sizeof(b), "%3u%%", pct); tft.print(b); }
 }

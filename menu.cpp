@@ -58,11 +58,12 @@ enum SubAffichage : uint8_t {
   SA_ROTATION,
   SA_SECONDES,
   SA_METEO,
+  SA_BATTERY,
   SA_ITALIC,
   SA_FORMAT_12H,
   SA_COUNT
 };
-static const char* s_affLabels[] = { "Icones sol/lune", "Arc-en-ciel", "Vitesse arc-en-ciel", "Mode eco", "Intensite dim", "Rotation 180", "Secondes", "Meteo", "Italique", "Format 12h" };
+static const char* s_affLabels[] = { "Icones sol/lune", "Arc-en-ciel", "Vitesse arc-en-ciel", "Mode eco", "Intensite dim", "Rotation 180", "Secondes", "Meteo", "Batterie", "Italique", "Format 12h" };
 
 // Sub-menu: WiFi
 enum SubWifi : uint8_t {
@@ -98,6 +99,7 @@ static uint8_t  s_dimLevel;
 static bool     s_rotation180;
 static bool     s_showSeconds;
 static bool     s_showWeather;
+static bool     s_showBattery;
 static bool     s_italic;
 static bool     s_h12;
 
@@ -168,6 +170,7 @@ static void saveAll() {
   prefs.putBool("showWx",    s_showWeather);
   prefs.putBool("italic",    s_italic);
   prefs.putBool("h12",       s_h12);
+  prefs.putBool("showBat",   s_showBattery);
   prefs.end();
 
   display_setSchedule(s_dayMin, s_nightMin);
@@ -241,6 +244,7 @@ static void openMenu() {
   s_showWeather = display_getShowWeather();
   s_italic      = display_getItalic();
   s_h12         = display_get12h();
+  s_showBattery = display_getShowBattery();
 }
 
 static void closeMenu() {
@@ -352,6 +356,9 @@ static void adjustValue(int8_t dir) {
     } else if (s_subCur == SA_METEO) {
       s_showWeather = !s_showWeather;
       display_setShowWeather(s_showWeather);
+    } else if (s_subCur == SA_BATTERY) {
+      s_showBattery = !s_showBattery;
+      display_setShowBattery(s_showBattery);
     } else if (s_subCur == SA_ITALIC) {
       s_italic = !s_italic;
       display_setItalic(s_italic);
@@ -548,6 +555,9 @@ static void getItemValue(uint8_t idx, bool editing, char* buf) {
       return;
     } else if (idx == SA_METEO) {
       strcpy(buf, s_showWeather ? "OUI" : "NON");
+      return;
+    } else if (idx == SA_BATTERY) {
+      strcpy(buf, s_showBattery ? "OUI" : "NON");
       return;
     } else if (idx == SA_ITALIC) {
       strcpy(buf, s_italic ? "OUI" : "NON");

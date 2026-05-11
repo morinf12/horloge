@@ -36,8 +36,8 @@
 #define BTN_A_PIN       8
 #define BTN_B_PIN      10
 
-// ---------------- Battery ADC (voltage divider 2x100K, midpoint to pin) ------
-#define BATT_ADC_PIN   13
-// Divider ratio: Vbatt * (R2 / (R1+R2)) = Vbatt * 0.5
-// So ADC voltage = Vbatt / 2
-#define BATT_DIVIDER   2.0f
+// ---------------- Battery ADC (Wemos D1 battery shield, BAT-A0 jumper) -------
+// Wemos shield divider: 130k (high) / 100k (low) -> Vadc = Vbat * 100/230
+// Multiply by 230/100 = 2.30 to recover Vbat.
+#define BATT_ADC_PIN   14
+#define BATT_DIVIDER   2.30f

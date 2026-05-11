@@ -2,7 +2,7 @@
 #include "config.h"
 
 // ESP32-S2 ADC: 13-bit (0-8191), default attenuation 11dB → 0-2.5V range
-// With 2x100K divider: ADC sees Vbatt/2, so max 4.2V → 2.1V at ADC
+// With Wemos battery shield divider 130k/100k: Vadc = Vbat * 0.435 (max ~1.83V at 4.2V).
 
 static float   s_voltage = 0.0f;
 static uint8_t s_percent = 0;

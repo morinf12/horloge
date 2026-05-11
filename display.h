@@ -41,6 +41,9 @@ bool     display_get12h();
 void     display_set12h(bool on);
 void     display_sleep(bool on);
 void     display_showTemp(float tempC);  // show external temperature on TFT
+void     display_showBattery(uint8_t pct, float volts);  // top-right battery indicator
+bool     display_getShowBattery();
+void     display_setShowBattery(bool on);
 
 // Direct TFT access for menu drawing
 #include <Adafruit_ST7789.h>

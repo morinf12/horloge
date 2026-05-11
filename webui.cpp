@@ -142,6 +142,10 @@ static const char INDEX_HTML[] PROGMEM = R"HTML(
       <input id="showWx" type="checkbox">
     </div>
     <div class="row">
+      <label>Batterie</label>
+      <input id="showBat" type="checkbox">
+    </div>
+    <div class="row">
       <label>Format 12h</label>
       <input id="h12" type="checkbox">
     </div>
@@ -274,6 +278,7 @@ function loadDisplay() {
     document.getElementById('italic').checked = d.italic;
     document.getElementById('showSec').checked = d.showSec;
     document.getElementById('showWx').checked = d.showWx;
+    document.getElementById('showBat').checked = d.showBat;
     document.getElementById('h12').checked = d.h12;
     document.documentElement.style.setProperty('--clock-font', d.italic ? "'7seg-i'" : "'7seg'");
   }).catch(()=>{});
@@ -288,8 +293,9 @@ function saveDisplay() {
   const italic = document.getElementById('italic').checked ? 1 : 0;
   const showSec = document.getElementById('showSec').checked ? 1 : 0;
   const showWx = document.getElementById('showWx').checked ? 1 : 0;
+  const showBat = document.getElementById('showBat').checked ? 1 : 0;
   const h12 = document.getElementById('h12').checked ? 1 : 0;
-  fetch('/api/display?icons='+icons+'&rainbow='+rainbow+'&eco='+eco+'&dim_lvl='+dimLvl+'&rot180='+rot180+'&italic='+italic+'&showSec='+showSec+'&showWx='+showWx+'&rb_spd='+rbSpd+'&h12='+h12).then(()=>{
+  fetch('/api/display?icons='+icons+'&rainbow='+rainbow+'&eco='+eco+'&dim_lvl='+dimLvl+'&rot180='+rot180+'&italic='+italic+'&showSec='+showSec+'&showWx='+showWx+'&rb_spd='+rbSpd+'&h12='+h12+'&showBat='+showBat).then(()=>{
     document.documentElement.style.setProperty('--clock-font', italic ? "'7seg-i'" : "'7seg'");
     alert('Enregistr\u00e9\u00a0!');
   });
@@ -909,6 +915,11 @@ static void hDisplay() {
     s_prefs.putBool("h12", v);
     display_set12h(v);
   }
+  if (s_server.hasArg("showBat")) {
+    bool v = s_server.arg("showBat").toInt() != 0;
+    s_prefs.putBool("showBat", v);
+    display_setShowBattery(v);
+  }
   bool icons = s_prefs.getBool("icons", true);
   bool rainbow = s_prefs.getBool("rainbow", false);
   uint8_t rbSpd = s_prefs.getUChar("rb_spd", 1);
@@ -919,6 +930,7 @@ static void hDisplay() {
   bool showWx = s_prefs.getBool("showWx", true);
   bool italic = s_prefs.getBool("italic", false);
   bool h12 = s_prefs.getBool("h12", false);
+  bool showBat = s_prefs.getBool("showBat", true);
   String j = "{\"icons\":" + String(icons ? "true" : "false")
            + ",\"rainbow\":" + String(rainbow ? "true" : "false")
            + ",\"rb_spd\":" + String(rbSpd)
@@ -928,7 +940,8 @@ static void hDisplay() {
            + ",\"showSec\":" + String(showSec ? "true" : "false")
            + ",\"showWx\":" + String(showWx ? "true" : "false")
            + ",\"italic\":" + String(italic ? "true" : "false")
-           + ",\"h12\":" + String(h12 ? "true" : "false") + "}";
+           + ",\"h12\":" + String(h12 ? "true" : "false")
+           + ",\"showBat\":" + String(showBat ? "true" : "false") + "}";
   s_server.send(200, "application/json", j);
 }
 
@@ -1221,6 +1234,8 @@ void webui_begin() {
   display_setItalic(italic);
   bool h12 = s_prefs.getBool("h12", false);
   display_set12h(h12);
+  bool showBat = s_prefs.getBool("showBat", true);
+  display_setShowBattery(showBat);
 
   // Routes
   s_server.on("/",            HTTP_GET,  hRoot);
