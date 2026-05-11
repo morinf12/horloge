@@ -1,4 +1,4 @@
-﻿#include "display.h"
+#include "display.h"
 #include "config.h"
 #include <SPI.h>
 #include <Adafruit_GFX.h>
@@ -87,7 +87,7 @@ void display_showIP(const char* ip) {
 #include "DSEG7_80.h"
 #include "DSEG7_80_Italic.h"
 
-// Rotation 3 â†’ 280 wide Ã— 240 tall
+// Rotation 3 → 280 wide × 240 tall
 static const int LAND_W = 280;
 static const int LAND_H = 240;
 
@@ -325,10 +325,10 @@ static void applyBacklight(uint8_t pct) {
 static bool isNightTime(int hour, int minute) {
   uint16_t now = (uint16_t)(hour * 60 + minute);
   if (s_nightMin > s_dayMin) {
-    // e.g. day=8:00, night=22:00 â†’ night is [22:00..8:00)
+    // e.g. day=8:00, night=22:00 → night is [22:00..8:00)
     return (now >= s_nightMin || now < s_dayMin);
   } else {
-    // e.g. day=22:00, night=8:00 â†’ night is [8:00..22:00)
+    // e.g. day=22:00, night=8:00 → night is [8:00..22:00)
     return (now >= s_nightMin && now < s_dayMin);
   }
 }
@@ -493,13 +493,13 @@ void display_showClock() {
     s_canvasX = (LAND_W - totalW) / 2;
     s_canvasY = (LAND_H - (int16_t)bh) / 2 + by - 2 + 44;  // by is negative, +44 to lower
 
-    if (s_clockCanvas) delete s_clockCanvas;
+    if (s_clockCanvas) { delete s_clockCanvas; s_clockCanvas = nullptr; }
     s_clockCanvas = new GFXcanvas16(cvW, cvH);
 
     // Seconds canvas: 2 digits at full DSEG7_80 size, will be displayed at half scale
     s_secFullW = 2 * digitCellW;
     s_secFullH = (int16_t)bh + 4;
-    if (s_secCanvas) delete s_secCanvas;
+    if (s_secCanvas) { delete s_secCanvas; s_secCanvas = nullptr; }
     s_secCanvas = new GFXcanvas16(s_secFullW, s_secFullH);
     // Half-scale position: right-aligned with main clock, below it
     s_secDispX = s_canvasX + totalW - s_secFullW / 2;
@@ -632,7 +632,7 @@ void display_showClock() {
   // Draw sun (day) or moon (night) icon when state changes
   int8_t nightState = night ? 1 : 0;
   if (s_showIcons && nightState != s_lastNight) {
-    // Icon geometry â€” 90px diameter
+    // Icon geometry — 90px diameter
     const int16_t iconR   = 45;   // main circle radius
     const int16_t iconY   = LAND_H - 50;
     const int16_t iconX   = 55;

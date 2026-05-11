@@ -149,6 +149,10 @@ static const char INDEX_HTML[] PROGMEM = R"HTML(
       <label>Format 12h</label>
       <input id="h12" type="checkbox">
     </div>
+    <div class="row">
+      <label>Menu via A seul</label>
+      <input id="menuA" type="checkbox">
+    </div>
     <button class="primary" onclick="saveDisplay()">Enregistrer</button>
   </section>
 
@@ -280,6 +284,7 @@ function loadDisplay() {
     document.getElementById('showWx').checked = d.showWx;
     document.getElementById('showBat').checked = d.showBat;
     document.getElementById('h12').checked = d.h12;
+    document.getElementById('menuA').checked = d.menuA;
     document.documentElement.style.setProperty('--clock-font', d.italic ? "'7seg-i'" : "'7seg'");
   }).catch(()=>{});
 }
@@ -295,7 +300,8 @@ function saveDisplay() {
   const showWx = document.getElementById('showWx').checked ? 1 : 0;
   const showBat = document.getElementById('showBat').checked ? 1 : 0;
   const h12 = document.getElementById('h12').checked ? 1 : 0;
-  fetch('/api/display?icons='+icons+'&rainbow='+rainbow+'&eco='+eco+'&dim_lvl='+dimLvl+'&rot180='+rot180+'&italic='+italic+'&showSec='+showSec+'&showWx='+showWx+'&rb_spd='+rbSpd+'&h12='+h12+'&showBat='+showBat).then(()=>{
+  const menuA = document.getElementById('menuA').checked ? 1 : 0;
+  fetch('/api/display?icons='+icons+'&rainbow='+rainbow+'&eco='+eco+'&dim_lvl='+dimLvl+'&rot180='+rot180+'&italic='+italic+'&showSec='+showSec+'&showWx='+showWx+'&rb_spd='+rbSpd+'&h12='+h12+'&showBat='+showBat+'&menuA='+menuA).then(()=>{
     document.documentElement.style.setProperty('--clock-font', italic ? "'7seg-i'" : "'7seg'");
     alert('Enregistr\u00e9\u00a0!');
   });
@@ -330,6 +336,7 @@ loadWeather();
 fetch('/api/version').then(r=>r.json()).then(d=>{
   let txt = 'Firmware: ' + d.version;
   if (d.batt_v > 0) txt += ' | Batterie: ' + d.batt_pct + '% (' + d.batt_v.toFixed(2) + 'V)';
+  if (d.rst) txt += ' | Reset: ' + d.rst + ' (#' + d.rst_n + ')';
   document.getElementById('fwver').textContent = txt;
 }).catch(()=>{});
 </script>
@@ -793,10 +800,20 @@ static void hRoot()    { s_server.send_P(200, "text/html", INDEX_HTML); }
 static void hOtaPage() { s_server.send_P(200, "text/html", OTA_HTML); }
 
 static void hVersion() {
+  uint8_t rstReason = s_prefs.getUChar("rst_last", 0);
+  uint16_t rstCount = s_prefs.getUShort("rst_cnt", 0);
+  static const char* RST_NAMES[] = {
+    "UNKNOWN","POWERON","EXT","SW","PANIC","INT_WDT","TASK_WDT","WDT",
+    "DEEPSLEEP","BROWNOUT","SDIO"
+  };
+  const char* rstName = (rstReason < sizeof(RST_NAMES)/sizeof(RST_NAMES[0]))
+                       ? RST_NAMES[rstReason] : "?";
   String j = "{\"version\":\"" + String(FW_VERSION) + "\""
            + ",\"release\":\"" + String(FW_RELEASE) + "\""
            + ",\"batt_v\":" + String(battery_voltage(), 2)
-           + ",\"batt_pct\":" + String(battery_percent()) + "}";
+           + ",\"batt_pct\":" + String(battery_percent())
+           + ",\"rst\":\"" + String(rstName) + "\""
+           + ",\"rst_n\":" + String(rstCount) + "}";
   s_server.send(200, "application/json", j);
 }
 
@@ -920,6 +937,11 @@ static void hDisplay() {
     s_prefs.putBool("showBat", v);
     display_setShowBattery(v);
   }
+  if (s_server.hasArg("menuA")) {
+    bool v = s_server.arg("menuA").toInt() != 0;
+    s_prefs.putBool("menuA", v);
+    menu_setOpenWithA(v);
+  }
   bool icons = s_prefs.getBool("icons", true);
   bool rainbow = s_prefs.getBool("rainbow", false);
   uint8_t rbSpd = s_prefs.getUChar("rb_spd", 1);
@@ -931,6 +953,7 @@ static void hDisplay() {
   bool italic = s_prefs.getBool("italic", false);
   bool h12 = s_prefs.getBool("h12", false);
   bool showBat = s_prefs.getBool("showBat", true);
+  bool menuA = s_prefs.getBool("menuA", false);
   String j = "{\"icons\":" + String(icons ? "true" : "false")
            + ",\"rainbow\":" + String(rainbow ? "true" : "false")
            + ",\"rb_spd\":" + String(rbSpd)
@@ -941,7 +964,8 @@ static void hDisplay() {
            + ",\"showWx\":" + String(showWx ? "true" : "false")
            + ",\"italic\":" + String(italic ? "true" : "false")
            + ",\"h12\":" + String(h12 ? "true" : "false")
-           + ",\"showBat\":" + String(showBat ? "true" : "false") + "}";
+           + ",\"showBat\":" + String(showBat ? "true" : "false")
+           + ",\"menuA\":" + String(menuA ? "true" : "false") + "}";
   s_server.send(200, "application/json", j);
 }
 

@@ -61,9 +61,10 @@ enum SubAffichage : uint8_t {
   SA_BATTERY,
   SA_ITALIC,
   SA_FORMAT_12H,
+  SA_MENU_CHORD,
   SA_COUNT
 };
-static const char* s_affLabels[] = { "Icones sol/lune", "Arc-en-ciel", "Vitesse arc-en-ciel", "Mode eco", "Intensite dim", "Rotation 180", "Secondes", "Meteo", "Batterie", "Italique", "Format 12h" };
+static const char* s_affLabels[] = { "Icones sol/lune", "Arc-en-ciel", "Vitesse arc-en-ciel", "Mode eco", "Intensite dim", "Rotation 180", "Secondes", "Meteo", "Batterie", "Italique", "Format 12h", "Ouverture menu" };
 
 // Sub-menu: WiFi
 enum SubWifi : uint8_t {
@@ -102,6 +103,12 @@ static bool     s_showWeather;
 static bool     s_showBattery;
 static bool     s_italic;
 static bool     s_h12;
+
+// Live chord setting: false = A+DOWN required to open the menu (default),
+// true = bare A press. Loaded from NVS at startup, persisted on saveAll().
+static bool     s_openWithA = false;
+// Working copy used while editing the menu.
+static bool     s_openWithAEdit = false;
 
 // ---- Color helpers ----------------------------------------------------------
 static void rgb565_to_rgb(uint16_t c, uint8_t& r, uint8_t& g, uint8_t& b) {
@@ -151,6 +158,7 @@ static uint16_t rgb565_to_hue(uint16_t c) {
 }
 
 // ---- Preferences save -------------------------------------------------------
+
 static void saveAll() {
   Preferences prefs;
   prefs.begin("wifi", false);
@@ -171,7 +179,10 @@ static void saveAll() {
   prefs.putBool("italic",    s_italic);
   prefs.putBool("h12",       s_h12);
   prefs.putBool("showBat",   s_showBattery);
+  prefs.putBool("menuA",     s_openWithAEdit);
   prefs.end();
+
+  s_openWithA = s_openWithAEdit;
 
   display_setSchedule(s_dayMin, s_nightMin);
   display_setColors(s_dayFg, s_nightFg);
@@ -184,6 +195,7 @@ static void saveAll() {
   display_setShowSeconds(s_showSeconds);
   display_setShowWeather(s_showWeather);
   display_setItalic(s_italic);
+  display_setShowBattery(s_showBattery);
 }
 
 // ---- Sub-menu item count helper ---------------------------------------------
@@ -212,7 +224,15 @@ static const char* subTitle() {
 }
 
 // ---- Public API -------------------------------------------------------------
-void menu_begin() {}
+void menu_begin() {
+  Preferences p;
+  p.begin("wifi", true);
+  s_openWithA = p.getBool("menuA", false);
+  p.end();
+}
+
+bool menu_getOpenWithA() { return s_openWithA; }
+void menu_setOpenWithA(bool on) { s_openWithA = on; }
 
 bool menu_isActive() { return s_active; }
 
@@ -245,6 +265,7 @@ static void openMenu() {
   s_italic      = display_getItalic();
   s_h12         = display_get12h();
   s_showBattery = display_getShowBattery();
+  s_openWithAEdit = s_openWithA;
 }
 
 static void closeMenu() {
@@ -365,6 +386,8 @@ static void adjustValue(int8_t dir) {
     } else if (s_subCur == SA_FORMAT_12H) {
       s_h12 = !s_h12;
       display_set12h(s_h12);
+    } else if (s_subCur == SA_MENU_CHORD) {
+      s_openWithAEdit = !s_openWithAEdit;
     }
   } else if (s_mainCur == MAIN_WIFI) {
     if (s_subCur == SW_ACTIVER) {
@@ -401,9 +424,13 @@ static void adjustValue(int8_t dir) {
 // ---- Button handling --------------------------------------------------------
 void menu_handleButton(Button btn) {
   if (!s_active) {
-    // Require DOWN + A pressed simultaneously to enter menu
-    if (btn == BTN_A && buttons_isHeld(BTN_DOWN)) openMenu();
-    else if (btn == BTN_DOWN && buttons_isHeld(BTN_A)) openMenu();
+    // Open chord: either A+DOWN (default) or bare A, per user setting.
+    if (s_openWithA) {
+      if (btn == BTN_A) openMenu();
+    } else {
+      if (btn == BTN_A && buttons_isHeld(BTN_DOWN)) openMenu();
+      else if (btn == BTN_DOWN && buttons_isHeld(BTN_A)) openMenu();
+    }
     return;
   }
 
@@ -564,6 +591,9 @@ static void getItemValue(uint8_t idx, bool editing, char* buf) {
       return;
     } else if (idx == SA_FORMAT_12H) {
       strcpy(buf, s_h12 ? "12h" : "24h");
+      return;
+    } else if (idx == SA_MENU_CHORD) {
+      strcpy(buf, s_openWithAEdit ? "A" : "A+v");
       return;
     }
   } else if (s_mainCur == MAIN_WIFI) {

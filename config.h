@@ -37,7 +37,8 @@
 #define BTN_B_PIN      10
 
 // ---------------- Battery ADC (Wemos D1 battery shield, BAT-A0 jumper) -------
-// Wemos shield divider: 130k (high) / 100k (low) -> Vadc = Vbat * 100/230
-// Multiply by 230/100 = 2.30 to recover Vbat.
+// Wemos shield divider: 130k (high) / 100k (low) -> theoretical ratio 2.30.
+// Calibrated empirically against a multimeter (3.43V measured vs 3.04V raw
+// reading -> 2.30 * 3.43 / 3.04 ~= 2.595).
 #define BATT_ADC_PIN   14
-#define BATT_DIVIDER   2.30f
+#define BATT_DIVIDER   2.595f

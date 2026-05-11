@@ -20,6 +20,19 @@ void setup() {
   delay(100);
   Serial.println(F("\n[Horloge] boot"));
 
+  // Persist the cause of this reset so the web UI can show it after the
+  // device reboots without a serial cable attached.
+  {
+    esp_reset_reason_t r = esp_reset_reason();
+    Preferences p;
+    p.begin("wifi", false);
+    p.putUChar("rst_last", (uint8_t)r);
+    uint16_t n = p.getUShort("rst_cnt", 0);
+    p.putUShort("rst_cnt", n + 1);
+    p.end();
+    Serial.printf("[Horloge] reset reason=%d count=%u\n", (int)r, n + 1);
+  }
+
   display_begin();
 
   // Load hostname and rotation for splash screen
