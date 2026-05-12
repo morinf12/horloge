@@ -87,6 +87,7 @@ void display_showIP(const char* ip) {
 // ---- 7-segment clock (landscape 280x240, TTF font) -------------------------
 #include "DSEG7_80.h"
 #include "DSEG7_80_Italic.h"
+#include "DSEG14_44.h"
 
 // Rotation 3 → 280 wide × 240 tall
 static const int LAND_W = 280;
@@ -711,23 +712,51 @@ void display_showTemp(float tempC) {
   s_lastTemp = tempC;
   s_lastTempColor = s_curFg;
 
-  // Position: bottom-right (offset left to avoid rounded corners)
-  const int16_t tx = LAND_W - 158;
-  const int16_t ty = LAND_H - 50;
+  // Position: bottom-right (DSEG14 ascends ~36 px above baseline)
+  const int16_t areaW = 200;
+  const int16_t areaH = 46;
+  const int16_t tx = LAND_W - areaW;
+  const int16_t ty = LAND_H - areaH - 2;
 
   // Clear area
-  tft.fillRect(tx, ty, 140, 50, ST77XX_BLACK);
+  tft.fillRect(tx, ty, areaW, areaH, ST77XX_BLACK);
 
-  // Draw temperature using current day/night color
-  tft.setFont(NULL);
-  tft.setTextSize(6);
-  tft.setTextColor(s_curFg);
-  tft.setCursor(tx, ty + 4);
-
-  char buf[10];
+  // Format: "23.C" -> we draw digits with DSEG14, then a small degree circle, then C.
+  char buf[8];
   int t = (int)roundf(tempC);
-  snprintf(buf, sizeof(buf), "%d%cC", t, (char)247);  // 247 = degree symbol in default font
-  tft.print(buf);
+  snprintf(buf, sizeof(buf), "%dC", t);
+
+  // Draw using DSEG14 (1bpp), right-aligned in the area.
+  tft.setFont(&DSEG14_44);
+  tft.setTextColor(s_curFg);
+  tft.setTextSize(1);
+
+  // Measure to right-align (leave room for the degree symbol between digits and 'C').
+  int16_t bx, by; uint16_t bw, bh;
+  tft.getTextBounds(buf, 0, 0, &bx, &by, &bw, &bh);
+  const int16_t degR = 5;                   // degree circle radius
+  const int16_t degGap = 4;                 // gap before/after degree
+  int16_t totalW = (int16_t)bw + 2 * degR + 2 * degGap;
+  int16_t baselineY = LAND_H - 6;           // baseline near bottom
+  int16_t cursorX = LAND_W - totalW - 30;   // shift left to clear rounded corner
+
+  // Find where 'C' starts in the string to insert degree before it.
+  // Print digits up to (but not including) the trailing 'C'.
+  size_t lenNum = strlen(buf) - 1; // strip trailing 'C'
+  tft.setCursor(cursorX, baselineY);
+  for (size_t i = 0; i < lenNum; i++) tft.write(buf[i]);
+
+  // Degree circle (just above baseline, to the right of digits).
+  int16_t pen = tft.getCursorX() + degGap;
+  int16_t degCY = baselineY - 30;           // sit it near the top of the digits
+  tft.drawCircle(pen + degR, degCY, degR, s_curFg);
+  tft.drawCircle(pen + degR, degCY, degR - 1, s_curFg);
+
+  // 'C'
+  tft.setCursor(pen + 2 * degR + degGap, baselineY);
+  tft.write('C');
+
+  tft.setFont(NULL);
 }
 
 // ---- Battery indicator (top-right) ------------------------------------------
