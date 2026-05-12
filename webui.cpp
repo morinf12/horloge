@@ -337,8 +337,6 @@ fetch('/api/version').then(r=>r.json()).then(d=>{
   let txt = 'Firmware: ' + d.version;
   if (d.batt_v > 0) txt += ' | Batterie: ' + d.batt_pct + '% (' + d.batt_v.toFixed(2) + 'V)';
   if (d.rst) txt += ' | Reset: ' + d.rst + ' (#' + d.rst_n + ')';
-  if (typeof d.heap !== 'undefined') txt += ' | Heap: ' + d.heap + ' (min ' + d.heap_min + ')';
-  if (typeof d.wx_valid !== 'undefined') txt += ' | Wx: v=' + d.wx_valid + ' code=' + d.wx_code + ' age=' + d.wx_age + 'ms wifi=' + d.wifi_mode + '/' + d.wifi_st;
   document.getElementById('fwver').textContent = txt;
 }).catch(()=>{});
 </script>
@@ -822,18 +820,13 @@ static void hVersion() {
   };
   const char* rstName = (rstReason < sizeof(RST_NAMES)/sizeof(RST_NAMES[0]))
                        ? RST_NAMES[rstReason] : "?";
-  char buf[384];
+  char buf[256];
   snprintf(buf, sizeof(buf),
     "{\"version\":\"%s\",\"release\":\"%s\",\"batt_v\":%.2f,\"batt_pct\":%d,"
-    "\"rst\":\"%s\",\"rst_n\":%u,\"heap\":%u,\"heap_min\":%u,"
-    "\"wifi_mode\":%d,\"wifi_st\":%d,\"wx_valid\":%d,\"wx_code\":%d,\"wx_age\":%lu}",
+    "\"rst\":\"%s\",\"rst_n\":%u}",
     FW_VERSION, FW_RELEASE,
     battery_voltage(), battery_percent(),
-    rstName, (unsigned)rstCount,
-    (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMinFreeHeap(),
-    (int)WiFi.getMode(), (int)WiFi.status(),
-    weather_valid() ? 1 : 0, weather_lastCode(),
-    (unsigned long)(weather_lastAttempt() ? (millis() - weather_lastAttempt()) : 0));
+    rstName, (unsigned)rstCount);
   s_server.send(200, "application/json", buf);
 }
 
