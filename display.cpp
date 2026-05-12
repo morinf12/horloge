@@ -4,6 +4,7 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_ST7789.h>
 #include <time.h>
+#include <new>
 #include <Preferences.h>
 
 // Backlight PWM
@@ -493,14 +494,40 @@ void display_showClock() {
     s_canvasX = (LAND_W - totalW) / 2;
     s_canvasY = (LAND_H - (int16_t)bh) / 2 + by - 2 + 44;  // by is negative, +44 to lower
 
-    if (s_clockCanvas) { delete s_clockCanvas; s_clockCanvas = nullptr; }
-    s_clockCanvas = new GFXcanvas16(cvW, cvH);
+    // Seconds canvas dimensions (computed up-front so the size check below
+    // can compare against existing canvases).
+    int16_t secFullW = 2 * digitCellW;
+    int16_t secFullH = (int16_t)bh + 4;
 
-    // Seconds canvas: 2 digits at full DSEG7_80 size, will be displayed at half scale
-    s_secFullW = 2 * digitCellW;
-    s_secFullH = (int16_t)bh + 4;
-    if (s_secCanvas) { delete s_secCanvas; s_secCanvas = nullptr; }
-    s_secCanvas = new GFXcanvas16(s_secFullW, s_secFullH);
+    // Only reallocate canvases when the size actually changed (e.g. font
+    // swap day/night italic). Reallocating every menu-exit fragments the
+    // heap (~50 KB combined) and eventually OOMs.
+    bool clockNeedsAlloc = !s_clockCanvas
+      || s_clockCanvas->width()  != cvW
+      || s_clockCanvas->height() != cvH;
+    if (clockNeedsAlloc) {
+      if (s_clockCanvas) { delete s_clockCanvas; s_clockCanvas = nullptr; }
+      s_clockCanvas = new (std::nothrow) GFXcanvas16(cvW, cvH);
+      if (!s_clockCanvas) {
+        // OOM: bail out, will retry next tick once heap recovers.
+        return;
+      }
+    }
+
+    bool secNeedsAlloc = !s_secCanvas
+      || s_secCanvas->width()  != secFullW
+      || s_secCanvas->height() != secFullH;
+    if (secNeedsAlloc) {
+      if (s_secCanvas) { delete s_secCanvas; s_secCanvas = nullptr; }
+      s_secCanvas = new (std::nothrow) GFXcanvas16(secFullW, secFullH);
+      if (!s_secCanvas) {
+        // Don't free the clock canvas here; it's still valid and we'll
+        // simply skip drawing seconds until the next tick.
+        return;
+      }
+    }
+    s_secFullW = secFullW;
+    s_secFullH = secFullH;
     // Half-scale position: right-aligned with main clock, below it
     s_secDispX = s_canvasX + totalW - s_secFullW / 2;
     s_secDispY = s_canvasY + cvH + 2;

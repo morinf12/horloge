@@ -122,13 +122,15 @@ void loop() {
   uint32_t interval = eco ? 5000 : 500;
   static uint32_t lastRefresh = 0;
   static uint32_t lastBatt = (uint32_t)-10000;  // fire on first iteration
-  static uint32_t lastWeather = 0;
+  static uint32_t lastWeather = (uint32_t)-60000; // fire on first iteration
   uint32_t now = millis();
   if (now - lastBatt >= 10000) {
     lastBatt = now;
     battery_update();
   }
-  if (now - lastWeather >= 60000) {  // check every 60s (module throttles to 10min)
+  // Retry weather every 15s while not yet valid, then every 60s.
+  uint32_t wxInterval = weather_valid() ? 60000 : 15000;
+  if (now - lastWeather >= wxInterval) {
     lastWeather = now;
     weather_update();
     if (weather_valid()) display_showTemp(weather_temp());
