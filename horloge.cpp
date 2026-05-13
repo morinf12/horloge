@@ -12,6 +12,7 @@
 #include "menu.h"
 #include "battery.h"
 #include "weather.h"
+#include "prefs_cache.h"
 #include <WiFi.h>
 #include <Preferences.h>
 
@@ -20,16 +21,21 @@ void setup() {
   delay(100);
   Serial.println(F("\n[Horloge] boot"));
 
+  // Open the deferred-commit NVS cache before any module touches Preferences.
+  prefs_begin();
+
   // Persist the cause of this reset so the web UI can show it after the
-  // device reboots without a serial cable attached.
+  // device reboots without a serial cable attached. This is a one-shot
+  // boot-time write so we flush immediately.
   {
     esp_reset_reason_t r = esp_reset_reason();
     Preferences p;
-    p.begin("wifi", false);
-    p.putUChar("rst_last", (uint8_t)r);
+    p.begin("wifi", true);
     uint16_t n = p.getUShort("rst_cnt", 0);
-    p.putUShort("rst_cnt", n + 1);
     p.end();
+    prefs_putUChar("rst_last", (uint8_t)r);
+    prefs_putUShort("rst_cnt", n + 1);
+    prefs_flush();
     Serial.printf("[Horloge] reset reason=%d count=%u\n", (int)r, n + 1);
   }
 
@@ -63,6 +69,7 @@ void setup() {
 
 void loop() {
   webui_loop();
+  prefs_loop();
 
   Button btn = buttons_poll();
   if (btn != BTN_NONE) {
@@ -79,22 +86,22 @@ void loop() {
       // LEFT: toggle sun/moon icons.
       bool v = !display_getShowIcons();
       display_setShowIcons(v);
-      Preferences p; p.begin("wifi", false); p.putBool("icons",   v); p.end();
+      prefs_putBool("icons", v);
     } else if (!menu_isActive() && btn == BTN_RIGHT && !buttons_isHeld(BTN_A)) {
       // RIGHT: toggle seconds display.
       bool v = !display_getShowSeconds();
       display_setShowSeconds(v);
-      Preferences p; p.begin("wifi", false); p.putBool("showSec", v); p.end();
+      prefs_putBool("showSec", v);
     } else if (!menu_isActive() && btn == BTN_DOWN && !buttons_isHeld(BTN_A)) {
       // DOWN: toggle weather display.
       bool v = !display_getShowWeather();
       display_setShowWeather(v);
-      Preferences p; p.begin("wifi", false); p.putBool("showWx",  v); p.end();
+      prefs_putBool("showWx", v);
     } else if (!menu_isActive() && btn == BTN_B) {
       // B: toggle 12h/24h time format.
       bool v = !display_get12h();
       display_set12h(v);
-      Preferences p; p.begin("wifi", false); p.putBool("h12", v); p.end();
+      prefs_putBool("h12", v);
     } else {
       menu_handleButton(btn);
     }

@@ -10,6 +10,7 @@
 #include <WebServer.h>
 #include <DNSServer.h>
 #include <Preferences.h>
+#include "prefs_cache.h"
 #include <Update.h>
 #include <sys/time.h>
 
@@ -848,7 +849,7 @@ static void hTime() {
   }
   if (s_server.hasArg("tz")) {
     int tz = s_server.arg("tz").toInt();
-    s_prefs.putInt("tz_off", tz);
+    prefs_putInt("tz_off", tz);
     configTime(tz * 60L, 0, "pool.ntp.org", "time.nist.gov");
   }
   s_server.send(200, "application/json", "{\"ok\":true}");
@@ -860,15 +861,15 @@ static void hSchedule() {
     int n = s_server.arg("night").toInt();
     if (d < 0) d = 0; if (d > 1439) d = 1439;
     if (n < 0) n = 0; if (n > 1439) n = 1439;
-    s_prefs.putUShort("day_m", (uint16_t)d);
-    s_prefs.putUShort("night_m", (uint16_t)n);
+    prefs_putUShort("day_m", (uint16_t)d);
+    prefs_putUShort("night_m", (uint16_t)n);
     display_setSchedule((uint16_t)d, (uint16_t)n);
   }
   if (s_server.hasArg("dayc") && s_server.hasArg("nightc")) {
     uint16_t dc = (uint16_t)s_server.arg("dayc").toInt();
     uint16_t nc = (uint16_t)s_server.arg("nightc").toInt();
-    s_prefs.putUShort("day_c", dc);
-    s_prefs.putUShort("night_c", nc);
+    prefs_putUShort("day_c", dc);
+    prefs_putUShort("night_c", nc);
     display_setColors(dc, nc);
   }
   if (s_server.hasArg("daybl") && s_server.hasArg("nightbl")) {
@@ -876,8 +877,8 @@ static void hSchedule() {
     int nbl = s_server.arg("nightbl").toInt();
     if (dbl < 1) dbl = 1; if (dbl > 100) dbl = 100;
     if (nbl < 1) nbl = 1; if (nbl > 100) nbl = 100;
-    s_prefs.putUChar("day_bl", (uint8_t)dbl);
-    s_prefs.putUChar("night_bl", (uint8_t)nbl);
+    prefs_putUChar("day_bl", (uint8_t)dbl);
+    prefs_putUChar("night_bl", (uint8_t)nbl);
     display_setBacklight((uint8_t)dbl, (uint8_t)nbl);
   }
   uint16_t d = s_prefs.getUShort("day_m", DEFAULT_DAY_MIN);
@@ -895,64 +896,64 @@ static void hSchedule() {
 static void hDisplay() {
   if (s_server.hasArg("icons")) {
     bool v = s_server.arg("icons").toInt() != 0;
-    s_prefs.putBool("icons", v);
+    prefs_putBool("icons", v);
     display_setShowIcons(v);
   }
   if (s_server.hasArg("rainbow")) {
     bool v = s_server.arg("rainbow").toInt() != 0;
-    s_prefs.putBool("rainbow", v);
+    prefs_putBool("rainbow", v);
     display_setRainbow(v);
   }
   if (s_server.hasArg("rb_spd")) {
     int v = s_server.arg("rb_spd").toInt();
     if (v < 1) v = 1; if (v > 32) v = 32;
-    s_prefs.putUChar("rb_spd", (uint8_t)v);
+    prefs_putUChar("rb_spd", (uint8_t)v);
     display_setRainbowSpeed((uint8_t)v);
   }
   if (s_server.hasArg("eco")) {
     bool v = s_server.arg("eco").toInt() != 0;
-    s_prefs.putBool("eco", v);
+    prefs_putBool("eco", v);
     display_setEcoMode(v);
   }
   if (s_server.hasArg("dim_lvl")) {
     uint8_t v = (uint8_t)s_server.arg("dim_lvl").toInt();
     if (v < 1) v = 1; if (v > 100) v = 100;
-    s_prefs.putUChar("dim_lvl", v);
+    prefs_putUChar("dim_lvl", v);
     display_setDimLevel(v);
   }
   if (s_server.hasArg("rot180")) {
     bool v = s_server.arg("rot180").toInt() != 0;
-    s_prefs.putBool("rot180", v);
+    prefs_putBool("rot180", v);
     display_setRotation180(v);
   }
   if (s_server.hasArg("italic")) {
     bool v = s_server.arg("italic").toInt() != 0;
-    s_prefs.putBool("italic", v);
+    prefs_putBool("italic", v);
     display_setItalic(v);
   }
   if (s_server.hasArg("showSec")) {
     bool v = s_server.arg("showSec").toInt() != 0;
-    s_prefs.putBool("showSec", v);
+    prefs_putBool("showSec", v);
     display_setShowSeconds(v);
   }
   if (s_server.hasArg("showWx")) {
     bool v = s_server.arg("showWx").toInt() != 0;
-    s_prefs.putBool("showWx", v);
+    prefs_putBool("showWx", v);
     display_setShowWeather(v);
   }
   if (s_server.hasArg("h12")) {
     bool v = s_server.arg("h12").toInt() != 0;
-    s_prefs.putBool("h12", v);
+    prefs_putBool("h12", v);
     display_set12h(v);
   }
   if (s_server.hasArg("showBat")) {
     bool v = s_server.arg("showBat").toInt() != 0;
-    s_prefs.putBool("showBat", v);
+    prefs_putBool("showBat", v);
     display_setShowBattery(v);
   }
   if (s_server.hasArg("menuA")) {
     bool v = s_server.arg("menuA").toInt() != 0;
-    s_prefs.putBool("menuA", v);
+    prefs_putBool("menuA", v);
     menu_setOpenWithA(v);
   }
   bool icons = s_prefs.getBool("icons", true);
@@ -988,8 +989,8 @@ static void hWeather() {
     String key  = s_server.hasArg("key")  ? s_server.arg("key")  : "";
     String city = s_server.hasArg("city") ? s_server.arg("city") : "";
     key.trim(); city.trim();
-    s_prefs.putString("w_key", key);
-    s_prefs.putString("w_city", city);
+    prefs_putString("w_key", key.c_str());
+    prefs_putString("w_city", city.c_str());
     // Reload weather module config
     weather_begin();
     s_server.send(200, "application/json", "{\"ok\":true}");
@@ -1068,6 +1069,7 @@ static void hWifiSave() {
   s_prefs.putString("ssid", ssid);
   s_prefs.putString("pass", pass);
   s_server.send(200, "application/json", "{\"ok\":true}");
+  prefs_flush();
   delay(500);
   ESP.restart();
 }
@@ -1076,12 +1078,14 @@ static void hWifiReset() {
   s_prefs.remove("ssid");
   s_prefs.remove("pass");
   s_server.send(200, "application/json", "{\"ok\":true}");
+  prefs_flush();
   delay(500);
   ESP.restart();
 }
 
 static void hReboot() {
   s_server.send(200, "application/json", "{\"ok\":true}");
+  prefs_flush();
   delay(500);
   ESP.restart();
 }
@@ -1133,19 +1137,19 @@ static void hDebugPress() {
     } else if (!menu_isActive() && btn == BTN_LEFT) {
       bool v = !display_getShowIcons();
       display_setShowIcons(v);
-      s_prefs.putBool("icons", v);
+      prefs_putBool("icons", v);
     } else if (!menu_isActive() && btn == BTN_RIGHT) {
       bool v = !display_getShowSeconds();
       display_setShowSeconds(v);
-      s_prefs.putBool("showSec", v);
+      prefs_putBool("showSec", v);
     } else if (!menu_isActive() && btn == BTN_DOWN) {
       bool v = !display_getShowWeather();
       display_setShowWeather(v);
-      s_prefs.putBool("showWx", v);
+      prefs_putBool("showWx", v);
     } else if (!menu_isActive() && btn == BTN_B) {
       bool v = !display_get12h();
       display_set12h(v);
-      s_prefs.putBool("h12", v);
+      prefs_putBool("h12", v);
     } else {
       menu_handleButton(btn);
     }
@@ -1171,6 +1175,7 @@ static void hOtaResult() {
   s_server.sendHeader("Connection", "close");
   s_server.send(ok ? 200 : 500, "text/plain", ok ? "OK" : Update.errorString());
   if (ok) {
+    prefs_flush();
     delay(500);
     ESP.restart();
   }

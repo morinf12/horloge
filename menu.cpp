@@ -2,6 +2,7 @@
 #include "display.h"
 #include "config.h"
 #include <Preferences.h>
+#include "prefs_cache.h"
 #include <Adafruit_ST7789.h>
 #include <WiFi.h>
 
@@ -160,27 +161,24 @@ static uint16_t rgb565_to_hue(uint16_t c) {
 // ---- Preferences save -------------------------------------------------------
 
 static void saveAll() {
-  Preferences prefs;
-  prefs.begin("wifi", false);
-  prefs.putUShort("day_m",   s_dayMin);
-  prefs.putUShort("night_m", s_nightMin);
-  prefs.putUShort("day_c",   s_dayFg);
-  prefs.putUShort("night_c", s_nightFg);
-  prefs.putUChar("day_bl",   s_dayBl);
-  prefs.putUChar("night_bl", s_nightBl);
-  prefs.putBool("icons",     s_showIcons);
-  prefs.putBool("rainbow",   s_rainbow);
-  prefs.putUChar("rb_spd",   s_rainbowSpeed);
-  prefs.putBool("eco",       s_ecoMode);
-  prefs.putUChar("dim_lvl",  s_dimLevel);
-  prefs.putBool("rot180",    s_rotation180);
-  prefs.putBool("showSec",   s_showSeconds);
-  prefs.putBool("showWx",    s_showWeather);
-  prefs.putBool("italic",    s_italic);
-  prefs.putBool("h12",       s_h12);
-  prefs.putBool("showBat",   s_showBattery);
-  prefs.putBool("menuA",     s_openWithAEdit);
-  prefs.end();
+  prefs_putUShort("day_m",   s_dayMin);
+  prefs_putUShort("night_m", s_nightMin);
+  prefs_putUShort("day_c",   s_dayFg);
+  prefs_putUShort("night_c", s_nightFg);
+  prefs_putUChar ("day_bl",  s_dayBl);
+  prefs_putUChar ("night_bl",s_nightBl);
+  prefs_putBool  ("icons",   s_showIcons);
+  prefs_putBool  ("rainbow", s_rainbow);
+  prefs_putUChar ("rb_spd",  s_rainbowSpeed);
+  prefs_putBool  ("eco",     s_ecoMode);
+  prefs_putUChar ("dim_lvl", s_dimLevel);
+  prefs_putBool  ("rot180",  s_rotation180);
+  prefs_putBool  ("showSec", s_showSeconds);
+  prefs_putBool  ("showWx",  s_showWeather);
+  prefs_putBool  ("italic",  s_italic);
+  prefs_putBool  ("h12",     s_h12);
+  prefs_putBool  ("showBat", s_showBattery);
+  prefs_putBool  ("menuA",   s_openWithAEdit);
 
   s_openWithA = s_openWithAEdit;
 
@@ -414,6 +412,7 @@ static void adjustValue(int8_t dir) {
       WiFi.mode(WIFI_AP);
       WiFi.softAP(WIFI_AP_SSID, WIFI_AP_PASS, WIFI_AP_CHAN);
     } else if (s_subCur == SW_REBOOT) {
+      prefs_flush();
       delay(200);
       ESP.restart();
     }

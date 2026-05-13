@@ -6,6 +6,7 @@
 #include <time.h>
 #include <new>
 #include <Preferences.h>
+#include "prefs_cache.h"
 
 // Backlight PWM
 #define BL_PWM_CHANNEL  0
@@ -220,12 +221,9 @@ void display_toggleNightOverride() {
   s_lastClockStr[0] = '\0';
 
   // Persist so the override survives a reboot.
-  Preferences p;
-  p.begin("wifi", false);
-  p.putBool("ovrAct",  s_ovrActive);
-  p.putBool("ovrNgt",  s_ovrNight);
-  p.putBool("ovrNat",  s_ovrNaturalAtSet);
-  p.end();
+  prefs_putBool("ovrAct", s_ovrActive);
+  prefs_putBool("ovrNgt", s_ovrNight);
+  prefs_putBool("ovrNat", s_ovrNaturalAtSet);
 }
 
 bool display_isNightOverrideActive() { return s_ovrActive; }
