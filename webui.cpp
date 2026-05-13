@@ -1066,19 +1066,22 @@ static void hWifiSave() {
   if (!s_server.hasArg("ssid")) { s_server.send(400, "text/plain", "missing ssid"); return; }
   String ssid = s_server.arg("ssid");
   String pass = s_server.hasArg("pass") ? s_server.arg("pass") : String();
-  s_prefs.putString("ssid", ssid);
-  s_prefs.putString("pass", pass);
-  s_server.send(200, "application/json", "{\"ok\":true}");
+  // WiFi credentials are committed to NVS immediately (no deferred write),
+  // unlike regular user settings which are batched in prefs_cache.
+  prefs_putString("ssid", ssid.c_str());
+  prefs_putString("pass", pass.c_str());
   prefs_flush();
+  s_server.send(200, "application/json", "{\"ok\":true}");
   delay(500);
   ESP.restart();
 }
 
 static void hWifiReset() {
-  s_prefs.remove("ssid");
-  s_prefs.remove("pass");
-  s_server.send(200, "application/json", "{\"ok\":true}");
+  // Erase WiFi credentials and commit immediately.
+  prefs_remove("ssid");
+  prefs_remove("pass");
   prefs_flush();
+  s_server.send(200, "application/json", "{\"ok\":true}");
   delay(500);
   ESP.restart();
 }

@@ -710,10 +710,14 @@ void display_showTemp(float tempC) {
   s_lastTemp = tempC;
   s_lastTempColor = s_curFg;
 
-  // Position: bottom-right (DSEG14 ascends ~36 px above baseline).
+  // Position: bottom-right. DSEG14_44 glyphs have yOff=-44, height=44; with
+  // baselineY = LAND_H-6 they span rows LAND_H-50 .. LAND_H-6, so the clear
+  // rect must be at least 50 px tall starting from LAND_H-52 to cover the
+  // top horizontal segment (otherwise a day->night color change leaves the
+  // old top segment in the previous color).
   // Sun icon is centered at x=55 with rays out to ~102, so keep area >= x=110.
   const int16_t areaW = 160;
-  const int16_t areaH = 46;
+  const int16_t areaH = 50;
   const int16_t tx = LAND_W - areaW;
   const int16_t ty = LAND_H - areaH - 2;
 
