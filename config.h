@@ -38,7 +38,7 @@
 
 // ---------------- Battery ADC (Wemos D1 battery shield, BAT-A0 jumper) -------
 // Wemos shield divider: 130k (high) / 100k (low) -> theoretical ratio 2.30.
-// Calibrated empirically against a multimeter (3.43V measured vs 3.04V raw
-// reading -> 2.30 * 3.43 / 3.04 ~= 2.595).
+// Calibrated empirically against a multimeter (4.14V measured vs 3.63V raw
+// reading -> 2.595 * 4.14 / 3.63 ~= 2.960).
 #define BATT_ADC_PIN   14
-#define BATT_DIVIDER   2.595f
+#define BATT_DIVIDER   2.960f
