@@ -43,8 +43,8 @@ void battery_update() {
   // Convert to voltage: ADC max 8191 = 2.5V (with 11dB attenuation)
   float adcVoltage = (adcAvg / 8191.0f) * 2.5f;
 
-  // Apply divider ratio to get actual battery voltage
-  s_voltage = adcVoltage * BATT_DIVIDER;
+  // Apply 2-point linear calibration (ESP32-S2 ADC is non-linear)
+  s_voltage = BATT_CAL_SLOPE * adcVoltage + BATT_CAL_OFFSET;
 
   // Clamp to valid range
   if (s_voltage > 4.25f) s_voltage = 4.25f;

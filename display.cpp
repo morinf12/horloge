@@ -741,7 +741,7 @@ void display_showTemp(float tempC) {
   const int16_t degGap = 4;                 // gap before/after degree
   int16_t totalW = (int16_t)bw + 2 * degR + 2 * degGap;
   int16_t baselineY = LAND_H - 6;           // baseline near bottom
-  int16_t cursorX = LAND_W - totalW - 30;   // shift left to clear rounded corner
+  int16_t cursorX = LAND_W - totalW - 48;   // shift left to clear rounded corner (+1/2 char)
 
   // Find where 'C' starts in the string to insert degree before it.
   // Print digits up to (but not including) the trailing 'C'.

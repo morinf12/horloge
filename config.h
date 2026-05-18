@@ -25,7 +25,7 @@
 
 // ---------------- Wi-Fi AP ----------------------------------------------------
 #define WIFI_AP_SSID   "Horloge"
-#define WIFI_AP_PASS   "horloge1234"   // must be >=8 chars
+#define WIFI_AP_PASS   ""              // empty = open AP
 #define WIFI_AP_CHAN    6
 
 // ---------------- Navigation buttons (active LOW, internal pull-up) -----------
@@ -38,7 +38,13 @@
 
 // ---------------- Battery ADC (Wemos D1 battery shield, BAT-A0 jumper) -------
 // Wemos shield divider: 130k (high) / 100k (low) -> theoretical ratio 2.30.
-// Calibrated empirically against a multimeter (4.14V measured vs 3.63V raw
-// reading -> 2.595 * 4.14 / 3.63 ~= 2.960).
-#define BATT_ADC_PIN   14
-#define BATT_DIVIDER   2.960f
+// ESP32-S2 ADC is non-linear, so we use a 2-point linear calibration on Vadc:
+//   V_batt = BATT_CAL_SLOPE * Vadc + BATT_CAL_OFFSET
+// Calibration points (Vadc = analogRead/8191 * 2.5):
+//   high: reported 4.14 V (Vadc=1.3986) -> actual 4.14 V
+//   low : reported 3.37 V (Vadc=1.1385) -> actual 3.09 V
+// Slope = (4.14-3.09)/(1.3986-1.1385) = 4.0363
+// Offset = 4.14 - 4.0363*1.3986 = -1.5044
+#define BATT_ADC_PIN     14
+#define BATT_CAL_SLOPE   4.0363f
+#define BATT_CAL_OFFSET  (-1.5044f)

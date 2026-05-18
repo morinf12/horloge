@@ -80,7 +80,7 @@ B goes back.
 | 5V (boost out) | 5V / VBUS |
 
 The shield's on-board divider is **130k / 100k** → ratio **2.30**
-(set in `config.h` as `BATT_DIVIDER`). Close the soldable `BAT-A0` jumper on
+(set in `config.h` as `BATT_CAL_SLOPE` / `BATT_CAL_OFFSET`). Close the soldable `BAT-A0` jumper on
 the shield to expose the battery voltage on its A0 pad. Verify the divider
 values on your shield revision (older boards may use 220k/100k → 3.20).
 
