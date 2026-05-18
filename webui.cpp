@@ -26,7 +26,7 @@ static const char INDEX_HTML[] PROGMEM = R"HTML(
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Horloge</title>
+<title id="pt" data-suffix="">Horloge</title>
 <style>
   :root { color-scheme: dark; --clock-font: '7seg'; }
   @font-face { font-family:'7seg';   src:url('/font.ttf')        format('truetype'); }
@@ -64,7 +64,7 @@ static const char INDEX_HTML[] PROGMEM = R"HTML(
 </style>
 </head>
 <body>
-<header>Horloge <a href="/debug" style="float:right;color:white;font-size:14px;opacity:0.7;text-decoration:none">Debug</a></header>
+<header><span id="hn">Horloge</span> <a href="/debug" style="float:right;color:white;font-size:14px;opacity:0.7;text-decoration:none">Debug</a></header>
 <main>
 
   <section class="card">
@@ -340,6 +340,12 @@ fetch('/api/version').then(r=>r.json()).then(d=>{
   if (d.rst) txt += ' | Reset: ' + d.rst + ' (#' + d.rst_n + ')';
   document.getElementById('fwver').textContent = txt;
 }).catch(()=>{});
+
+fetch('/api/wifi/hostname').then(r=>r.json()).then(d=>{
+  if(!d.hostname) return;
+  var e=document.getElementById('hn'); if(e) e.textContent=d.hostname;
+  var t=document.getElementById('pt'); if(t) document.title=d.hostname+(t.dataset.suffix||'');
+}).catch(()=>{});
 </script>
 </body>
 </html>
@@ -352,7 +358,7 @@ static const char WIFI_HTML[] PROGMEM = R"HTML(
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Configuration Wi-Fi</title>
+<title id="pt" data-suffix=" - Wi-Fi">Horloge - Wi-Fi</title>
 <style>
   :root { color-scheme: dark; }
   body { margin:0; font-family: system-ui, sans-serif; background:#0e1726; color:#e6edf3; }
@@ -381,7 +387,7 @@ static const char WIFI_HTML[] PROGMEM = R"HTML(
 </style>
 </head>
 <body>
-<header>Configuration Wi-Fi</header>
+<header><span id="hn">Horloge</span> - Configuration Wi-Fi</header>
 <main>
 
   <section class="card">
@@ -505,6 +511,12 @@ async function saveHostname() {
   if (r.ok) document.getElementById('hmsg').innerHTML='<span class="ok">Enregistr\u00e9 (actif au red\u00e9marrage)</span>';
   else document.getElementById('hmsg').innerHTML='<span class="err">Erreur</span>';
 }
+
+fetch('/api/wifi/hostname').then(r=>r.json()).then(d=>{
+  if(!d.hostname) return;
+  var e=document.getElementById('hn'); if(e) e.textContent=d.hostname;
+  var t=document.getElementById('pt'); if(t) document.title=d.hostname+(t.dataset.suffix||'');
+}).catch(()=>{});
 </script>
 </body>
 </html>
@@ -517,7 +529,7 @@ static const char DEBUG_HTML[] PROGMEM = R"HTML(
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Horloge - Debug</title>
+<title id="pt" data-suffix=" - Debug">Horloge - Debug</title>
 <style>
   :root { color-scheme: dark; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -572,7 +584,7 @@ static const char DEBUG_HTML[] PROGMEM = R"HTML(
 </style>
 </head>
 <body>
-<header>Horloge - Debug <a href="/">Accueil</a> <a href="/wifi">WiFi</a> <a href="/update">OTA</a></header>
+<header><span id="hn">Horloge</span> - Debug <a href="/">Accueil</a> <a href="/wifi">WiFi</a> <a href="/update">OTA</a></header>
 <main>
 
 <section class="card">
@@ -680,6 +692,12 @@ document.addEventListener('keydown', function(e) {
 // Auto-refresh
 refresh();
 polling = setInterval(refresh, 500);
+
+fetch('/api/wifi/hostname').then(r=>r.json()).then(d=>{
+  if(!d.hostname) return;
+  var e=document.getElementById('hn'); if(e) e.textContent=d.hostname;
+  var t=document.getElementById('pt'); if(t) document.title=d.hostname+(t.dataset.suffix||'');
+}).catch(()=>{});
 </script>
 </body>
 </html>
@@ -692,7 +710,7 @@ static const char OTA_HTML[] PROGMEM = R"HTML(
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Mise &agrave; jour firmware</title>
+<title id="pt" data-suffix=" - OTA">Horloge - OTA</title>
 <style>
   :root { color-scheme: dark; }
   * { box-sizing: border-box; }
@@ -722,7 +740,7 @@ static const char OTA_HTML[] PROGMEM = R"HTML(
 </style>
 </head>
 <body>
-<header>Mise &agrave; jour firmware</header>
+<header><span id="hn">Horloge</span> - Mise &agrave; jour firmware</header>
 <main>
   <section class="card">
     <h2>V&eacute;rifier les mises &agrave; jour</h2>
@@ -791,6 +809,12 @@ f.addEventListener('submit',e=>{
   x.onerror=()=>{ l.textContent='Erreur d\'envoi'; };
   x.open('POST','/update'); x.send(fd);
 });
+
+fetch('/api/wifi/hostname').then(r=>r.json()).then(d=>{
+  if(!d.hostname) return;
+  var e=document.getElementById('hn'); if(e) e.textContent=d.hostname;
+  var t=document.getElementById('pt'); if(t) document.title=d.hostname+(t.dataset.suffix||'');
+}).catch(()=>{});
 </script>
 </body>
 </html>
